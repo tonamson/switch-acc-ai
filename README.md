@@ -9,6 +9,7 @@ Mỗi account được lưu ở:
 ```
 
 Codex OAuth vẫn do `codex login` xử lý. Script này chỉ đổi thư mục lưu profile.
+`skills`, `plugins`, `sessions` và `config.toml` được symlink từ `~/.codex` vào từng profile để MCP/skills/plugin và resume session dùng chung.
 
 ## Cài đặt
 
@@ -141,4 +142,10 @@ Mặc định dùng `~/.codex-accounts`. Muốn đổi:
 
 ```bash
 CODEX_ACCOUNTS_DIR=~/my-codex-accounts ./cx list
+```
+
+Muốn đổi nơi lấy skills/plugins/config dùng chung:
+
+```bash
+CODEX_SHARED_HOME=~/my-codex-home ./cx acc2
 ```

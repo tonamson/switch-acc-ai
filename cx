@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${CODEX_ACCOUNTS_DIR:-$HOME/.codex-accounts}"
 CURRENT="$ROOT/.current"
+SHARED_CODEX_HOME="${CODEX_SHARED_HOME:-$HOME/.codex}"
 
 die() {
   echo "cx: $*" >&2
@@ -47,10 +48,24 @@ need_profile() {
   printf '%s\n' "$dir"
 }
 
+link_shared_profile() {
+  local dir="$1" name source target
+  for name in skills plugins sessions config.toml; do
+    source="$SHARED_CODEX_HOME/$name"
+    target="$dir/$name"
+    [[ -e "$source" || -L "$source" ]] || continue
+    [[ -e "$target" || -L "$target" ]] && continue
+    ln -s "$source" "$target"
+  done
+}
+
 run_codex() {
   local name="$1"
   shift
-  CODEX_HOME="$(need_profile "$name")" codex "$@"
+  local dir
+  dir="$(need_profile "$name")"
+  link_shared_profile "$dir"
+  CODEX_HOME="$dir" codex "$@"
 }
 
 app_server_exchange() {
@@ -348,6 +363,7 @@ codex_login_menu() {
   mkdir -p "$ROOT"
   dir="$(profile_dir "$name")"
   mkdir -p "$dir"
+  link_shared_profile "$dir"
   CODEX_HOME="$dir" codex login
 }
 
@@ -482,6 +498,7 @@ case "$cmd" in
     mkdir -p "$ROOT"
     dir="$(profile_dir "$name")"
     mkdir -p "$dir"
+    link_shared_profile "$dir"
     CODEX_HOME="$dir" codex login
     ;;
   use)
