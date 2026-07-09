@@ -40,7 +40,19 @@ function resetLabel(window: Record<string, unknown> | undefined): string {
   if (typeof value !== "number") {
     return "unknown reset";
   }
-  return `resets ${new Date(value * 1000).toLocaleString()}`;
+  const resetAt = new Date(value * 1000);
+  const year = String(resetAt.getFullYear()).padStart(4, "0");
+  const month = String(resetAt.getMonth() + 1).padStart(2, "0");
+  const day = String(resetAt.getDate()).padStart(2, "0");
+  const hours = String(resetAt.getHours()).padStart(2, "0");
+  const minutes = String(resetAt.getMinutes()).padStart(2, "0");
+  const seconds = String(resetAt.getSeconds()).padStart(2, "0");
+  const timeZoneParts = new Intl.DateTimeFormat("en-US", {
+    timeZoneName: "short",
+  }).formatToParts(resetAt);
+  const timeZone =
+    timeZoneParts.find((part) => part.type === "timeZoneName")?.value ?? "UTC";
+  return `resets ${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${timeZone}`;
 }
 
 function getRecord(value: unknown): Record<string, unknown> {
@@ -55,9 +67,12 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
 
   const responses = new Map<number, JsonRpcMessage>();
   const rl = createInterface({ input: child.stdout });
+  const targetId = includeLimits ? 3 : 2;
+  let sawTargetResponse = false;
   const timeout = setTimeout(() => {
     child.kill("SIGTERM");
   }, 15_000);
+  const closePromise = once(child, "close");
 
   const reader = (async () => {
     for await (const line of rl) {
@@ -66,7 +81,8 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
         if (typeof message.id === "number") {
           responses.set(message.id, message);
         }
-        if (responses.has(includeLimits ? 3 : 2)) {
+        if (responses.has(targetId)) {
+          sawTargetResponse = true;
           child.stdin.end();
           break;
         }
@@ -82,11 +98,11 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
     child.stdin.write('{"jsonrpc":"2.0","id":3,"method":"account/rateLimits/read","params":null}\n');
   }
 
-  await Promise.race([reader, once(child, "exit")]);
+  await reader;
+  await closePromise;
   clearTimeout(timeout);
-  child.kill("SIGTERM");
 
-  if (!responses.has(includeLimits ? 3 : 2)) {
+  if (!sawTargetResponse) {
     throw new Error("no response from codex app-server");
   }
   return responses;
@@ -119,21 +135,30 @@ export async function readRateLimits(config: AppConfig, name: string): Promise<R
   const accountResult = getRecord(accountMessage?.result);
   const account = getRecord(accountResult.account);
   const limitResult = getRecord(limitsMessage?.result);
-  const rateLimits = getRecord(limitResult.rateLimits);
-  const primary = getRecord(rateLimits.primary);
-  const secondary = getRecord(rateLimits.secondary);
+  const keyedRateLimits = getRecord(limitResult.rateLimitsByLimitId);
+  const rateLimits = getRecord(keyedRateLimits.codex);
+  const legacyRateLimits = getRecord(limitResult.rateLimits);
+  const selectedRateLimits = Object.keys(rateLimits).length > 0 ? rateLimits : legacyRateLimits;
+  const primary = getRecord(selectedRateLimits.primary);
+  const secondary = getRecord(selectedRateLimits.secondary);
   const credits = getRecord(limitResult.rateLimitResetCredits);
   const current = await readCurrentAccount(config);
+  const legacyCredits = getRecord(legacyRateLimits.credits);
+  const resetCredits =
+    credits.availableCount ?? legacyCredits.balance ?? "unknown";
 
   return {
     account: name,
     current: current === name,
     user: String(account.email || account.username || account.accountId || "unknown"),
-    plan: String(account.planType || rateLimits.planType || "unknown"),
+    plan: String(account.planType || selectedRateLimits.planType || "unknown"),
     primary: { usedPercent: usedPercent(primary), resetLabel: resetLabel(primary) },
     secondary: { usedPercent: usedPercent(secondary), resetLabel: resetLabel(secondary) },
-    resetCredits: String(credits.availableCount ?? "unknown"),
-    reached: typeof rateLimits.rateLimitReachedType === "string" ? rateLimits.rateLimitReachedType : undefined,
+    resetCredits: String(resetCredits),
+    reached:
+      typeof selectedRateLimits.rateLimitReachedType === "string"
+        ? selectedRateLimits.rateLimitReachedType
+        : undefined,
   };
 }
 

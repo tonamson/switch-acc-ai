@@ -32,6 +32,7 @@ afterEach(() => {
   delete process.env.CODEX_ACCOUNT_LOG;
   delete process.env.CODEX_ARGS_LOG;
   delete process.env.CODEX_LOGIN_LOG;
+  delete process.env.CODEX_APP_SERVER_EXIT_LOG;
 });
 
 describe("codex integration", () => {
@@ -57,6 +58,42 @@ describe("codex integration", () => {
       primary: { usedPercent: "75% used" },
       secondary: { usedPercent: "90% used" },
       resetCredits: "1",
+    });
+    expect(status.primary.resetLabel).toMatch(
+      /^resets \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+$/,
+    );
+  });
+
+  it("prefers keyed rate limits and closes app-server via stdin", async () => {
+    const { config, root } = await setup();
+    process.env.CODEX_APP_SERVER_EXIT_LOG = join(root, "app-server-exit.log");
+    await ensureProfile(config, "keyed");
+
+    const status = await readRateLimits(config, "keyed");
+
+    expect(status).toMatchObject({
+      account: "keyed",
+      current: false,
+      user: "keyed@example.com",
+      plan: "plus",
+      primary: { usedPercent: "61% used" },
+      secondary: { usedPercent: "22% used" },
+      resetCredits: "7",
+    });
+    expect((await readFile(process.env.CODEX_APP_SERVER_EXIT_LOG, "utf8")).trim()).toBe("stdin-closed");
+  });
+
+  it("falls back to legacy credit balance when availableCount is missing", async () => {
+    const { config } = await setup();
+    await ensureProfile(config, "legacy");
+
+    const status = await readRateLimits(config, "legacy");
+
+    expect(status).toMatchObject({
+      account: "legacy",
+      primary: { usedPercent: "44% used" },
+      secondary: { usedPercent: "11% used" },
+      resetCredits: "3",
     });
   });
 
