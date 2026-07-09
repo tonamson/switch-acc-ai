@@ -13,22 +13,33 @@ die() {
 usage() {
   cat <<'EOF'
 Usage:
-  cx                   Open the nested CLI menu
-  cx [codex args...]    Open menu, then run selected CLI with args
-  cx login <name>        Login Codex OAuth into an account profile
-  cx <name> [args...]    Run codex with that account
-  cx run [args...]       Run codex with current account
-  cx pick [args...]      Pick an account with arrow keys, then run codex
-  cx status [name]       Show 5h and weekly Codex limits
-  cx status --all        Show Codex limits for all accounts
-  cx use <name>          Set current account
-  cx current             Show current account
-  cx list                List accounts
-  cx rename <old> <new>  Rename an account
-  cx remove <name>       Delete an account profile
+  cx                         Open the nested CLI menu
+  cx [codex args...]          Open menu, then run selected CLI with args
+  cx <name> [codex args...]   Run codex with that account
+  cx run [codex args...]      Run codex with current account
+  cx pick [codex args...]     Pick an account, then run codex
+
+Sessions:
+  cx <name> --resume <id>     Resume session with that account
+  cx run --resume <id>        Resume session with current account
+  cx resume <id> [args...]    Shortcut for: cx run --resume <id>
+
+Accounts:
+  cx login <name>             Login Codex OAuth into an account profile
+  cx use <name>               Set current account
+  cx current                  Show current account
+  cx list                     List accounts
+  cx rename <old> <new>       Rename an account
+  cx remove <name>            Delete an account profile
+
+Status:
+  cx status                   Show current account limits
+  cx status <name>            Show one account limits
+  cx status --all             Show limits for all accounts
 
 Env:
   CODEX_ACCOUNTS_DIR     Default: ~/.codex-accounts
+  CODEX_SHARED_HOME      Default: ~/.codex
 EOF
 }
 
@@ -519,6 +530,12 @@ case "$cmd" in
   run)
     [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
     run_codex "$(cat "$CURRENT")" "${@:2}"
+    ;;
+  resume)
+    session_id="${2:-}"
+    [[ -n "$session_id" ]] || die "usage: cx resume <id> [args...]"
+    [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+    run_codex "$(cat "$CURRENT")" --resume "$session_id" "${@:3}"
     ;;
   pick|select|switch)
     pick_account "${@:2}"
