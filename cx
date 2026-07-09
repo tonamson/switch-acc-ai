@@ -12,9 +12,14 @@ die() {
 usage() {
   cat <<'EOF'
 Usage:
+  cx                   Open the nested CLI menu
+  cx [codex args...]    Open menu, then run selected CLI with args
   cx login <name>        Login Codex OAuth into an account profile
   cx <name> [args...]    Run codex with that account
   cx run [args...]       Run codex with current account
+  cx pick [args...]      Pick an account with arrow keys, then run codex
+  cx status [name]       Show 5h and weekly Codex limits
+  cx status --all        Show Codex limits for all accounts
   cx use <name>          Set current account
   cx current             Show current account
   cx list                List accounts
@@ -48,9 +53,427 @@ run_codex() {
   CODEX_HOME="$(need_profile "$name")" codex "$@"
 }
 
+app_server_exchange() {
+  local name="$1"
+  local include_limits="${2:-0}"
+  local dir response tmpdir in_fifo out_fifo app_pid line
+  dir="$(need_profile "$name")"
+  tmpdir="$(mktemp -d)"
+  in_fifo="$tmpdir/in"
+  out_fifo="$tmpdir/out"
+  mkfifo "$in_fifo" "$out_fifo"
+  CODEX_HOME="$dir" codex app-server --stdio <"$in_fifo" >"$out_fifo" &
+  app_pid="$!"
+  exec 3>"$in_fifo"
+  exec 4<"$out_fifo"
+
+  response=""
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"cx","version":"dev"},"capabilities":{"experimentalApi":true}}}' >&3
+  while IFS= read -r -t 15 line <&4; do
+    response+="$line"$'\n'
+    [[ "$line" == *'"id":1'* ]] && break
+  done
+
+  printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}' >&3
+  while IFS= read -r -t 15 line <&4; do
+    response+="$line"$'\n'
+    [[ "$line" == *'"id":2'* ]] && break
+  done
+
+  if [[ "$include_limits" == "1" ]]; then
+    printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"account/rateLimits/read","params":null}' >&3
+    while IFS= read -r -t 15 line <&4; do
+      response+="$line"$'\n'
+      [[ "$line" == *'"id":3'* ]] && break
+    done
+  fi
+
+  exec 3>&-
+  exec 4<&-
+  wait "$app_pid" 2>/dev/null || true
+  rm -rf "$tmpdir"
+
+  printf '%s' "$response"
+}
+
+read_account_label() {
+  local name="$1"
+  STATUS_ACCOUNT="$name" python3 - "$(app_server_exchange "$name" 0)" <<'PY'
+import json
+import os
+import sys
+
+account_name = os.environ["STATUS_ACCOUNT"]
+payload = None
+for line in sys.argv[1].splitlines():
+    try:
+        message = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if message.get("id") == 2:
+        payload = message.get("result")
+        break
+
+account = (payload or {}).get("account") or {}
+label = account.get("email") or account.get("username") or account.get("accountId") or account_name
+print(label)
+PY
+}
+
+read_rate_limits() {
+  local name="$1"
+  STATUS_ACCOUNT="$name" python3 - "$(app_server_exchange "$name" 1)" <<'PY'
+import datetime
+import json
+import os
+import sys
+
+account = os.environ["STATUS_ACCOUNT"]
+account_payload = None
+limits_payload = None
+for line in sys.argv[1].splitlines():
+    try:
+        message = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if message.get("id") == 2:
+        if "error" in message:
+            print(f"cx: {account}: {message['error']}", file=sys.stderr)
+            sys.exit(1)
+        account_payload = message.get("result")
+    if message.get("id") == 3:
+        if "error" in message:
+            print(f"cx: {account}: {message['error']}", file=sys.stderr)
+            sys.exit(1)
+        limits_payload = message.get("result")
+
+if limits_payload is None:
+    print(f"cx: {account}: no rate limit response from codex app-server", file=sys.stderr)
+    sys.exit(1)
+
+account_info = (account_payload or {}).get("account") or {}
+user = account_info.get("email") or account_info.get("username") or account_info.get("accountId") or "unknown"
+limits = limits_payload.get("rateLimitsByLimitId", {}).get("codex") or limits_payload.get("rateLimits") or {}
+primary = limits.get("primary") or {}
+secondary = limits.get("secondary") or {}
+credits = limits_payload.get("rateLimitResetCredits") or {}
+legacy_credits = limits.get("credits") or {}
+
+def used_percent(window):
+    value = window.get("usedPercent")
+    return "unknown" if value is None else f"{value}% used"
+
+def reset_at(window):
+    value = window.get("resetsAt")
+    if value is None:
+        return "unknown reset"
+    dt = datetime.datetime.fromtimestamp(value).astimezone()
+    return "resets " + dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+available_credits = credits.get("availableCount")
+if available_credits is None:
+    available_credits = legacy_credits.get("balance")
+if available_credits is None:
+    available_credits = "unknown"
+
+plan = account_info.get("planType") or limits.get("planType") or "unknown"
+reached = limits.get("rateLimitReachedType")
+
+print(account)
+print(f"  user: {user}")
+print(f"  plan: {plan}")
+print(f"  5h limit: {used_percent(primary)} ({reset_at(primary)})")
+print(f"  weekly limit: {used_percent(secondary)} ({reset_at(secondary)})")
+print(f"  reset credits: {available_credits}")
+if reached:
+    print(f"  limit reached: {reached}")
+PY
+}
+
+list_accounts() {
+  local current="" name label marker
+  [[ -s "$CURRENT" ]] && current="$(cat "$CURRENT")"
+  [[ -d "$ROOT" ]] || return 0
+  while IFS= read -r name; do
+    label="$(read_account_label "$name" 2>/dev/null || printf 'unknown')"
+    marker=" "
+    [[ "$name" == "$current" ]] && marker="*"
+    printf '%s %s\t%s\n' "$marker" "$name" "$label"
+  done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+}
+
+read_menu_key() {
+  local key second third
+  if [[ -n "${CX_TEST_KEYS:-}" ]]; then
+    key="${CX_TEST_KEYS:0:1}"
+    CX_TEST_KEYS="${CX_TEST_KEYS:1}"
+  else
+    IFS= read -r -s -n 1 key || true
+  fi
+
+  case "$key" in
+    $'\x1b')
+      if [[ -n "${CX_TEST_KEYS:-}" ]]; then
+        second="${CX_TEST_KEYS:0:1}"
+        CX_TEST_KEYS="${CX_TEST_KEYS:1}"
+      else
+        second=""
+        IFS= read -r -s -n 1 -t 1 second || true
+      fi
+      if [[ -z "$second" ]]; then
+        MENU_KEY="escape"
+        return 0
+      fi
+      if [[ "$second" == "[" || "$second" == "O" ]]; then
+        if [[ -n "${CX_TEST_KEYS:-}" ]]; then
+          third="${CX_TEST_KEYS:0:1}"
+          CX_TEST_KEYS="${CX_TEST_KEYS:1}"
+        else
+          third=""
+          IFS= read -r -s -n 1 -t 1 third || true
+        fi
+        case "$third" in
+          A) MENU_KEY="up" ;;
+          B) MENU_KEY="down" ;;
+          C) MENU_KEY="right" ;;
+          D) MENU_KEY="left" ;;
+          *) MENU_KEY="other" ;;
+        esac
+      else
+        MENU_KEY="other"
+      fi
+      ;;
+    $'\n'|$'\r'|"") MENU_KEY="enter" ;;
+    q|Q) MENU_KEY="quit" ;;
+    *) MENU_KEY="other" ;;
+  esac
+}
+
+menu_select() {
+  local title="$1"
+  shift
+  local items=("$@")
+  local selected=0 i key old_stty interactive=0
+
+  [[ "${#items[@]}" -gt 0 ]] || return 1
+  if [[ -z "${CX_TEST_KEYS:-}" ]]; then
+    interactive=1
+    [[ -t 0 && -t 1 ]] || die "menu requires an interactive terminal"
+    old_stty="$(stty -g)"
+    trap 'stty "$old_stty"; printf "\033[?25h\n"' INT TERM EXIT
+    stty -echo -icanon min 1 time 0
+    printf '\033[?25l'
+  fi
+
+  while true; do
+    if [[ "$interactive" == "1" ]]; then
+      printf '\033[H\033[J' >&2
+    fi
+    printf '%s\n\n' "$title" >&2
+    for ((i = 0; i < ${#items[@]}; i++)); do
+      if [[ "$i" -eq "$selected" ]]; then
+        printf '\033[7m> %s\033[0m\n' "${items[$i]}" >&2
+      else
+        printf '  %s\n' "${items[$i]}" >&2
+      fi
+    done
+    printf '\nEnter: select  ↑/↓: move  q/Esc: back\n' >&2
+
+    read_menu_key
+    key="$MENU_KEY"
+    case "$key" in
+      up)
+        selected=$((selected - 1))
+        if [[ "$selected" -lt 0 ]]; then
+          selected=$((${#items[@]} - 1))
+        fi
+        ;;
+      down)
+        selected=$((selected + 1))
+        if [[ "$selected" -ge "${#items[@]}" ]]; then
+          selected=0
+        fi
+        ;;
+      enter)
+        if [[ "$interactive" == "1" ]]; then
+          stty "$old_stty"
+          printf '\033[?25h'
+          trap - INT TERM EXIT
+        fi
+        MENU_SELECTED="$selected"
+        return 0
+        ;;
+      quit|escape)
+        if [[ "$interactive" == "1" ]]; then
+          stty "$old_stty"
+          printf '\033[?25h'
+          trap - INT TERM EXIT
+        fi
+        return 130
+        ;;
+    esac
+  done
+}
+
+select_account_name() {
+  [[ -d "$ROOT" ]] || die "no accounts; run: cx login <name>"
+  local names=() labels=() items=() current="" name selected
+  [[ -s "$CURRENT" ]] && current="$(cat "$CURRENT")"
+
+  while IFS= read -r name; do
+    names+=("$name")
+    labels+=("$(read_account_label "$name" 2>/dev/null || printf 'unknown')")
+    items+=("$name    ${labels[$((${#labels[@]} - 1))]}")
+  done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+
+  [[ "${#names[@]}" -gt 0 ]] || die "no accounts; run: cx login <name>"
+  menu_select "Select Codex account" "${items[@]}" || return $?
+  selected="$MENU_SELECTED"
+  SELECTED_ACCOUNT="${names[$selected]}"
+}
+
+pick_account() {
+  local name
+  select_account_name || return $?
+  name="$SELECTED_ACCOUNT"
+  printf '%s\n' "$name" > "$CURRENT"
+  run_codex "$name" "$@"
+}
+
+codex_login_menu() {
+  local name
+  printf 'Account profile name: '
+  IFS= read -r name
+  [[ -n "$name" ]] || die "missing account name"
+  mkdir -p "$ROOT"
+  dir="$(profile_dir "$name")"
+  mkdir -p "$dir"
+  CODEX_HOME="$dir" codex login
+}
+
+codex_use_menu() {
+  local name
+  select_account_name || return $?
+  name="$SELECTED_ACCOUNT"
+  printf '%s\n' "$name" > "$CURRENT"
+  printf 'Current Codex account: %s\n' "$name"
+}
+
+codex_status_menu() {
+  local selected name
+  menu_select "Codex status" "Current account" "Specific account" "All accounts" "Back" || return $?
+  selected="$MENU_SELECTED"
+  case "$selected" in
+    0)
+      [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+      read_rate_limits "$(cat "$CURRENT")"
+      ;;
+    1)
+      select_account_name || return $?
+      name="$SELECTED_ACCOUNT"
+      read_rate_limits "$name"
+      ;;
+    2)
+      cmd_status --all
+      ;;
+  esac
+}
+
+codex_rename_menu() {
+  local old new
+  select_account_name || return $?
+  old="$SELECTED_ACCOUNT"
+  printf 'New profile name: '
+  IFS= read -r new
+  [[ -n "$new" ]] || die "missing new account name"
+  mkdir -p "$ROOT"
+  old_dir="$(need_profile "$old")"
+  new_dir="$(profile_dir "$new")"
+  [[ ! -e "$new_dir" ]] || die "account already exists: $new"
+  mv "$old_dir" "$new_dir"
+  if [[ -s "$CURRENT" && "$(cat "$CURRENT")" == "$old" ]]; then
+    printf '%s\n' "$new" > "$CURRENT"
+  fi
+}
+
+codex_remove_menu() {
+  local name
+  select_account_name || return $?
+  name="$SELECTED_ACCOUNT"
+  mkdir -p "$ROOT"
+  dir="$(need_profile "$name")"
+  rm -rf "$dir"
+  if [[ -s "$CURRENT" && "$(cat "$CURRENT")" == "$name" ]]; then
+    rm -f "$CURRENT"
+  fi
+}
+
+codex_menu() {
+  local selected
+  while true; do
+    menu_select "Codex" "Run with account" "Login account" "Use default account" "Current account" "List accounts" "Status / limits" "Rename account" "Remove account" "Back" || return 0
+    selected="$MENU_SELECTED"
+    case "$selected" in
+      0) pick_account "$@"; return $? ;;
+      1) codex_login_menu ;;
+      2) codex_use_menu ;;
+      3) [[ -s "$CURRENT" ]] && cat "$CURRENT" || die "no current account; run: cx use <name>" ;;
+      4) list_accounts ;;
+      5) codex_status_menu ;;
+      6) codex_rename_menu ;;
+      7) codex_remove_menu ;;
+      8) return 0 ;;
+    esac
+    printf '\nPress Enter to continue...'
+    IFS= read -r _ || true
+  done
+}
+
+claude_menu() {
+  menu_select "Claude" "Back" || true
+}
+
+main_menu() {
+  local selected
+
+  while true; do
+    menu_select "Select CLI" "Codex" "Claude" "Exit" || break
+    selected="$MENU_SELECTED"
+    case "$selected" in
+      0) codex_menu "$@"; break ;;
+      1) claude_menu ;;
+      2) break ;;
+    esac
+  done
+
+  [[ -n "${CX_TEST_KEYS:-}" ]] || printf '\033[H\033[J'
+}
+
+cmd_status() {
+  local name
+  case "${1:-}" in
+    --all)
+      [[ -d "$ROOT" ]] || return 0
+      while IFS= read -r name; do
+        read_rate_limits "$name"
+      done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+      ;;
+    "")
+      [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+      read_rate_limits "$(cat "$CURRENT")"
+      ;;
+    *)
+      read_rate_limits "$1"
+      ;;
+  esac
+}
+
 cmd="${1:-}"
 case "$cmd" in
-  ""|-h|--help|help)
+  "")
+    main_menu
+    ;;
+  -h|--help|help)
     usage
     ;;
   login)
@@ -74,11 +497,17 @@ case "$cmd" in
     cat "$CURRENT"
     ;;
   list)
-    [[ -d "$ROOT" ]] && find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort
+    list_accounts
     ;;
   run)
     [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
     run_codex "$(cat "$CURRENT")" "${@:2}"
+    ;;
+  pick|select|switch)
+    pick_account "${@:2}"
+    ;;
+  status)
+    cmd_status "${2:-}"
     ;;
   rename)
     old="${2:-}"
@@ -102,6 +531,9 @@ case "$cmd" in
     if [[ -s "$CURRENT" && "$(cat "$CURRENT")" == "$name" ]]; then
       rm -f "$CURRENT"
     fi
+    ;;
+  -*)
+    main_menu "$@"
     ;;
   *)
     if [[ -d "$(profile_dir "$cmd")" ]]; then

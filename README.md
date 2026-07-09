@@ -44,6 +44,34 @@ Truyền thêm tham số cho `codex` cũng được:
 ./cx acc2 --help
 ```
 
+Muốn mở menu điều hướng bằng phím mũi tên:
+
+```bash
+./cx
+```
+
+Menu đầu tiên cho chọn CLI:
+
+```text
+Codex
+Claude
+Exit
+```
+
+Chọn `Codex` rồi dùng `Enter` để vào các chức năng như chạy Codex bằng account, login account, chọn account mặc định, xem status/limit, đổi tên hoặc xóa account.
+
+Hoặc truyền tham số Codex sau khi chọn `Codex -> Run with account`:
+
+```bash
+./cx pick --model gpt-5.5
+```
+
+Các option Codex cũng có thể đặt ngay sau `cx`; script sẽ mở menu rồi forward option sang `codex` sau khi chọn account:
+
+```bash
+./cx --model gpt-5.5
+```
+
 ## Đặt account mặc định
 
 ```bash
@@ -62,6 +90,30 @@ Kiểm tra account mặc định:
 ```bash
 ./cx list
 ```
+
+Danh sách sẽ hiển thị tên profile kèm email/username mà Codex trả về.
+
+## Xem limit/status
+
+Xem account mặc định:
+
+```bash
+./cx status
+```
+
+Xem account cụ thể:
+
+```bash
+./cx status acc2
+```
+
+Xem tất cả account:
+
+```bash
+./cx status --all
+```
+
+Lệnh này hiển thị email/username, 5h limit, weekly limit, thời điểm reset, plan và reset credits.
 
 ## Đổi tên account
 
