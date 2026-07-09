@@ -32,6 +32,15 @@ export function profileDir(config: AppConfig, name: string): string {
 
 async function pathExists(path: string): Promise<boolean> {
   try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pathExistsOrSymlink(path: string): Promise<boolean> {
+  try {
     await lstat(path);
     return true;
   } catch {
@@ -90,6 +99,14 @@ export async function renameAccount(config: AppConfig, oldName: string, newName:
   if (await pathExists(newDir)) {
     throw new Error(`account already exists: ${newName}`);
   }
+  try {
+    const stat = await lstat(newDir);
+    if (stat.isSymbolicLink()) {
+      await rm(newDir, { force: true });
+    }
+  } catch {
+    // newDir does not exist, which is the normal path.
+  }
   await mkdir(config.accountsDir, { recursive: true });
   await rename(oldDir, newDir);
   if ((await readCurrentAccount(config)) === oldName) {
@@ -109,7 +126,7 @@ export async function linkSharedProfile(config: AppConfig, profilePath: string):
   for (const assetName of sharedAssetNames) {
     const source = join(config.sharedHome, assetName);
     const target = join(profilePath, basename(assetName));
-    if (!(await pathExists(source)) || (await pathExists(target))) {
+    if (!(await pathExistsOrSymlink(source)) || (await pathExistsOrSymlink(target))) {
       continue;
     }
     await symlink(source, target);

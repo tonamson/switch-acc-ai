@@ -57,6 +57,14 @@ describe("account filesystem operations", () => {
     expect(await readCurrentAccount(config)).toBe("acc2");
   });
 
+  it("returns null for a broken current symlink", async () => {
+    const config = await testConfig();
+    await mkdir(config.accountsDir, { recursive: true });
+    await symlink(join(config.accountsDir, "missing"), config.currentFile);
+
+    expect(await readCurrentAccount(config)).toBeNull();
+  });
+
   it("requires an existing profile", async () => {
     const config = await testConfig();
     await expect(requireProfile(config, "missing")).rejects.toThrow("account not found: missing");
@@ -71,6 +79,17 @@ describe("account filesystem operations", () => {
 
     expect(await listAccounts(config)).toEqual(["main"]);
     expect(await readCurrentAccount(config)).toBe("main");
+  });
+
+  it("renames over a broken destination symlink", async () => {
+    const config = await testConfig();
+    await ensureProfile(config, "acc2");
+    await mkdir(config.accountsDir, { recursive: true });
+    await symlink(join(config.accountsDir, "missing"), join(config.accountsDir, "main"));
+
+    await renameAccount(config, "acc2", "main");
+
+    expect(await listAccounts(config)).toEqual(["main"]);
   });
 
   it("removes current account and clears .current", async () => {

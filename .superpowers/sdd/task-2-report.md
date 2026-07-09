@@ -56,6 +56,46 @@ Output:
 > tsc --noEmit
 ```
 
+## Broken Symlink Scope Fix
+
+Narrowed the broken-symlink handling so only `linkSharedProfile()` treats symlinks as present:
+
+- restored normal file-existence checks in `pathExists()` to `access()` semantics for `readCurrentAccount()`, `renameAccount()`, `listAccounts()`, and similar helpers
+- added a dedicated symlink-aware presence check for shared-profile linking
+- taught `renameAccount()` to clear a broken destination symlink before renaming, matching the `cx` shell behavior for an empty target slot
+
+Added regressions in `tests/accounts.test.ts` for:
+
+- broken `.current` symlink returns `null` from `readCurrentAccount()`
+- broken destination symlink does not block `renameAccount()`
+- existing broken shared-profile symlink cases still pass
+
+### Verification
+
+```bash
+npm test -- tests/accounts.test.ts
+```
+
+Output:
+
+```text
+✓ tests/accounts.test.ts (12 tests) 19ms
+
+Test Files  1 passed (1)
+Tests  12 passed (12)
+```
+
+```bash
+npm run typecheck
+```
+
+Output:
+
+```text
+> switch-acc-ai@0.1.0 typecheck
+> tsc --noEmit
+```
+
 ## Files Changed
 
 - `src/core/config.ts`
