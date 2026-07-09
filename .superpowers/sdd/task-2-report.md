@@ -74,3 +74,43 @@ Output:
 
 - The working tree already contains unrelated dirty and untracked files (`cx`, `tests/status.sh`, `dist/`, `node_modules/`, plan docs). I left them untouched.
 - The RED-step transcript was not captured before implementation, so the report only records the expected pre-implementation failure mode rather than a preserved failing command output.
+
+## Review Fix Addendum
+
+Applied the review fix for broken symlink handling in `src/core/accounts.ts`:
+
+- `pathExists()` now uses `lstat()` instead of `access()`, so symlinks count as present even when their targets are broken.
+- `linkSharedProfile()` is now idempotent when a broken symlink already exists in the profile, because the target-presence check also treats symlinks as present.
+
+Added focused regressions in `tests/accounts.test.ts` for:
+
+- a broken symlink under `CODEX_SHARED_HOME` being linked into a profile
+- a broken symlink already present in the profile causing `linkSharedProfile()` to skip it without throwing
+
+Cleaned up the unused `readFile` import from `tests/accounts.test.ts`.
+
+### Verification
+
+```bash
+npm test -- tests/accounts.test.ts
+```
+
+Output:
+
+```text
+✓ tests/accounts.test.ts (10 tests) 17ms
+
+Test Files  1 passed (1)
+Tests  10 passed (10)
+```
+
+```bash
+npm run typecheck
+```
+
+Output:
+
+```text
+> switch-acc-ai@0.1.0 typecheck
+> tsc --noEmit
+```

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, symlink, writeFile, lstat } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -95,5 +95,28 @@ describe("account filesystem operations", () => {
 
     expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
+  });
+
+  it("links broken shared symlinks into the profile", async () => {
+    const config = await testConfig();
+    const profile = await ensureProfile(config, "acc2");
+    await mkdir(config.sharedHome, { recursive: true });
+    await symlink(join(config.sharedHome, "missing-skills"), join(config.sharedHome, "skills"));
+
+    await linkSharedProfile(config, profile);
+
+    expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
+  });
+
+  it("skips broken symlinks already present in the profile", async () => {
+    const config = await testConfig();
+    const profile = await ensureProfile(config, "acc2");
+    await mkdir(config.sharedHome, { recursive: true });
+    await symlink(join(config.sharedHome, "missing-skills"), join(config.sharedHome, "skills"));
+    await symlink(join(config.sharedHome, "missing-skills"), join(profile, "skills"));
+
+    await linkSharedProfile(config, profile);
+
+    expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
   });
 });

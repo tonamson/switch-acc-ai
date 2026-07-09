@@ -32,7 +32,7 @@ export function profileDir(config: AppConfig, name: string): string {
 
 async function pathExists(path: string): Promise<boolean> {
   try {
-    await access(path, constants.F_OK);
+    await lstat(path);
     return true;
   } catch {
     return false;
