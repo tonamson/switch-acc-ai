@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAccountsTable, formatError, formatHelp, formatStatus } from "../src/ui/output.js";
+
+afterEach(() => {
+  delete process.env.NO_COLOR;
+  vi.resetModules();
+});
 
 describe("output formatting", () => {
   it("formats help with swa command sections", () => {
@@ -22,6 +27,7 @@ describe("output formatting", () => {
     expect(output).toContain("acc1");
     expect(output).toContain("acc2@example.com");
     expect(output).toContain("*");
+    expect(output).not.toMatch(/[┌┐└┘│─├┤┬┴┼]/);
   });
 
   it("formats status rows and account errors", () => {
@@ -51,5 +57,15 @@ describe("output formatting", () => {
     expect(output).toContain("error");
     expect(output).toContain("account not found: acc3");
     expect(output).toContain("Run swa list to see profiles.");
+  });
+
+  it("disables color when NO_COLOR is present even if empty", async () => {
+    process.env.NO_COLOR = "";
+    vi.resetModules();
+
+    const theme = await import("../src/ui/theme.js");
+
+    expect(theme.enabled).toBe(false);
+    expect(theme.brand("SWA")).toBe("SWA");
   });
 });

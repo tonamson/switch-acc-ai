@@ -1,6 +1,6 @@
 import pc from "picocolors";
 
-export const enabled = !process.env.NO_COLOR;
+export const enabled = !Object.prototype.hasOwnProperty.call(process.env, "NO_COLOR");
 
 export function brand(value: string): string {
   return enabled ? pc.cyan(pc.bold(value)) : value;

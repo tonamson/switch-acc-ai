@@ -1,4 +1,3 @@
-import Table from "cli-table3";
 import type { RateLimitStatus } from "../core/codex.js";
 import { brand, danger, heading, muted, warning } from "./theme.js";
 
@@ -41,17 +40,17 @@ export function formatHelp(): string {
 }
 
 export function formatAccountsTable(rows: AccountListRow[]): string {
-  const table = new Table({
-    head: [muted("use"), muted("profile"), muted("identity")],
-    style: { head: [], border: [] },
-    chars: { mid: "", "left-mid": "", "mid-mid": "", "right-mid": "" },
-  });
+  const headers = ["use", "profile", "identity"];
+  const tableRows = rows.map((row) => [row.marker, row.profile, row.identity]);
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...tableRows.map((row) => String(row[index]).length)),
+  );
+  const renderRow = (cells: string[]) =>
+    cells.map((cell, index) => String(cell).padEnd(widths[index])).join("  ");
+  const separator = widths.map((width) => "-".repeat(width)).join("  ");
+  const lines = [heading("Accounts"), renderRow(headers), separator, ...tableRows.map(renderRow)];
 
-  for (const row of rows) {
-    table.push([row.marker, row.profile, row.identity]);
-  }
-
-  return `${heading("Accounts")}\n${table.toString()}`;
+  return lines.join("\n");
 }
 
 export function formatStatus(rows: StatusRenderRow[]): string {
