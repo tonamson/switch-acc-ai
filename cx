@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${CODEX_ACCOUNTS_DIR:-$HOME/.codex-accounts}"
+CURRENT="$ROOT/.current"
+
+die() {
+  echo "cx: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  cx login <name>        Login Codex OAuth into an account profile
+  cx <name> [args...]    Run codex with that account
+  cx run [args...]       Run codex with current account
+  cx use <name>          Set current account
+  cx current             Show current account
+  cx list                List accounts
+  cx rename <old> <new>  Rename an account
+  cx remove <name>       Delete an account profile
+
+Env:
+  CODEX_ACCOUNTS_DIR     Default: ~/.codex-accounts
+EOF
+}
+
+valid_name() {
+  [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]] && [[ "$1" != "." ]] && [[ "$1" != ".." ]]
+}
+
+profile_dir() {
+  valid_name "${1:-}" || die "invalid account name: ${1:-}"
+  printf '%s/%s\n' "$ROOT" "$1"
+}
+
+need_profile() {
+  local dir
+  dir="$(profile_dir "$1")"
+  [[ -d "$dir" ]] || die "account not found: $1"
+  printf '%s\n' "$dir"
+}
+
+run_codex() {
+  local name="$1"
+  shift
+  CODEX_HOME="$(need_profile "$name")" codex "$@"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  ""|-h|--help|help)
+    usage
+    ;;
+  login)
+    name="${2:-}"
+    [[ -n "$name" ]] || die "missing account name"
+    mkdir -p "$ROOT"
+    dir="$(profile_dir "$name")"
+    mkdir -p "$dir"
+    CODEX_HOME="$dir" codex login
+    ;;
+  use)
+    name="${2:-}"
+    [[ -n "$name" ]] || die "missing account name"
+    mkdir -p "$ROOT"
+    need_profile "$name" >/dev/null
+    printf '%s\n' "$name" > "$CURRENT"
+    echo "$name"
+    ;;
+  current)
+    [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+    cat "$CURRENT"
+    ;;
+  list)
+    [[ -d "$ROOT" ]] && find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort
+    ;;
+  run)
+    [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+    run_codex "$(cat "$CURRENT")" "${@:2}"
+    ;;
+  rename)
+    old="${2:-}"
+    new="${3:-}"
+    [[ -n "$old" && -n "$new" ]] || die "usage: cx rename <old> <new>"
+    mkdir -p "$ROOT"
+    old_dir="$(need_profile "$old")"
+    new_dir="$(profile_dir "$new")"
+    [[ ! -e "$new_dir" ]] || die "account already exists: $new"
+    mv "$old_dir" "$new_dir"
+    if [[ -s "$CURRENT" && "$(cat "$CURRENT")" == "$old" ]]; then
+      printf '%s\n' "$new" > "$CURRENT"
+    fi
+    ;;
+  remove|rm|delete)
+    name="${2:-}"
+    [[ -n "$name" ]] || die "usage: cx remove <name>"
+    mkdir -p "$ROOT"
+    dir="$(need_profile "$name")"
+    rm -rf "$dir"
+    if [[ -s "$CURRENT" && "$(cat "$CURRENT")" == "$name" ]]; then
+      rm -f "$CURRENT"
+    fi
+    ;;
+  *)
+    if [[ -d "$(profile_dir "$cmd")" ]]; then
+      run_codex "$cmd" "${@:2}"
+    else
+      die "unknown command or account: $cmd"
+    fi
+    ;;
+esac
