@@ -10,36 +10,65 @@ die() {
   exit 1
 }
 
+is_tty() {
+  [[ -t 1 && -z "${NO_COLOR:-}" ]]
+}
+
+style() {
+  local code="$1"
+  shift
+  if is_tty; then
+    printf '\033[%sm%s\033[0m' "$code" "$*"
+  else
+    printf '%s' "$*"
+  fi
+}
+
+label() {
+  style '2' "$1"
+}
+
+section() {
+  printf '%s\n' "$(style '1' "$1")"
+  printf '%s\n' "----------------------------------------"
+}
+
+current_account() {
+  [[ -s "$CURRENT" ]] && cat "$CURRENT" || printf 'none'
+}
+
 usage() {
   cat <<'EOF'
-Usage:
-  cx                         Open the nested CLI menu
-  cx [codex args...]          Open menu, then run selected CLI with args
-  cx <name> [codex args...]   Run codex with that account
-  cx run [codex args...]      Run codex with current account
-  cx pick [codex args...]     Pick an account, then run codex
+cx - Codex account switcher
 
-Sessions:
-  cx <name> --resume <id>     Resume session with that account
-  cx run --resume <id>        Resume session with current account
-  cx resume <id> [args...]    Shortcut for: cx run --resume <id>
+Run
+  cx                         open the menu
+  cx [codex args...]          open the menu, then forward args
+  cx <name> [codex args...]   run Codex with an account
+  cx run [codex args...]      run Codex with the current account
+  cx pick [codex args...]     pick an account, then run Codex
 
-Accounts:
-  cx login <name>             Login Codex OAuth into an account profile
-  cx use <name>               Set current account
-  cx current                  Show current account
-  cx list                     List accounts
-  cx rename <old> <new>       Rename an account
-  cx remove <name>            Delete an account profile
+Sessions
+  cx <name> --resume <id>     resume with an account
+  cx run --resume <id>        resume with the current account
+  cx resume <id> [args...]    shortcut for: cx run --resume <id>
 
-Status:
-  cx status                   Show current account limits
-  cx status <name>            Show one account limits
-  cx status --all             Show limits for all accounts
+Accounts
+  cx login <name>             login Codex OAuth into a profile
+  cx use <name>               set the current account
+  cx current                  print the current account
+  cx list                     list accounts
+  cx rename <old> <new>       rename an account
+  cx remove <name>            delete an account profile
 
-Env:
-  CODEX_ACCOUNTS_DIR     Default: ~/.codex-accounts
-  CODEX_SHARED_HOME      Default: ~/.codex
+Status
+  cx status                   show current account limits
+  cx status <name>            show one account limits
+  cx status --all             show limits for all accounts
+
+Env
+  CODEX_ACCOUNTS_DIR          default: ~/.codex-accounts
+  CODEX_SHARED_HOME           default: ~/.codex
 EOF
 }
 
@@ -147,14 +176,16 @@ PY
 }
 
 read_rate_limits() {
-  local name="$1"
-  STATUS_ACCOUNT="$name" python3 - "$(app_server_exchange "$name" 1)" <<'PY'
+  local name="$1" current=""
+  [[ -s "$CURRENT" ]] && current="$(cat "$CURRENT")"
+  STATUS_ACCOUNT="$name" STATUS_CURRENT="$current" python3 - "$(app_server_exchange "$name" 1)" <<'PY'
 import datetime
 import json
 import os
 import sys
 
 account = os.environ["STATUS_ACCOUNT"]
+current = os.environ.get("STATUS_CURRENT")
 account_payload = None
 limits_payload = None
 for line in sys.argv[1].splitlines():
@@ -204,15 +235,17 @@ if available_credits is None:
 
 plan = account_info.get("planType") or limits.get("planType") or "unknown"
 reached = limits.get("rateLimitReachedType")
+suffix = " current" if account == current else ""
 
-print(account)
-print(f"  user: {user}")
-print(f"  plan: {plan}")
-print(f"  5h limit: {used_percent(primary)} ({reset_at(primary)})")
-print(f"  weekly limit: {used_percent(secondary)} ({reset_at(secondary)})")
-print(f"  reset credits: {available_credits}")
+print(f"{account}{suffix}")
+print(f"  user          {user}")
+print(f"  plan          {plan}")
+print(f"  5h limit      {used_percent(primary)} ({reset_at(primary)})")
+print(f"  weekly limit  {used_percent(secondary)} ({reset_at(secondary)})")
+print(f"  reset credits {available_credits}")
 if reached:
-    print(f"  limit reached: {reached}")
+    print(f"  limit reached {reached}")
+print()
 PY
 }
 
@@ -220,11 +253,13 @@ list_accounts() {
   local current="" name label marker
   [[ -s "$CURRENT" ]] && current="$(cat "$CURRENT")"
   [[ -d "$ROOT" ]] || return 0
+  section "Accounts"
+  printf '%-4s %-18s %s\n' "use" "profile" "identity"
   while IFS= read -r name; do
     label="$(read_account_label "$name" 2>/dev/null || printf 'unknown')"
-    marker=" "
+    marker="-"
     [[ "$name" == "$current" ]] && marker="*"
-    printf '%s %s\t%s\n' "$marker" "$name" "$label"
+    printf '%-4s %-18s %s\n' "$marker" "$name" "$label"
   done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 }
 
@@ -295,15 +330,17 @@ menu_select() {
     if [[ "$interactive" == "1" ]]; then
       printf '\033[H\033[J' >&2
     fi
-    printf '%s\n\n' "$title" >&2
+    printf '%s %s\n' "$(style '1;36' "cx")" "$(label "/ $title")" >&2
+    printf '%s\n' "$(label "current: $(current_account)")" >&2
+    printf '%s\n\n' "----------------------------------------" >&2
     for ((i = 0; i < ${#items[@]}; i++)); do
       if [[ "$i" -eq "$selected" ]]; then
-        printf '\033[7m> %s\033[0m\n' "${items[$i]}" >&2
+        printf '%s %02d  %s\n' "$(style '1;36' ">")" "$((i + 1))" "$(style '1' "${items[$i]}")" >&2
       else
-        printf '  %s\n' "${items[$i]}" >&2
+        printf '  %02d  %s\n' "$((i + 1))" "${items[$i]}" >&2
       fi
     done
-    printf '\nEnter: select  ↑/↓: move  q/Esc: back\n' >&2
+    printf '\n%s\n' "$(label "enter select  arrows move  q/esc back")" >&2
 
     read_menu_key
     key="$MENU_KEY"
@@ -349,11 +386,15 @@ select_account_name() {
   while IFS= read -r name; do
     names+=("$name")
     labels+=("$(read_account_label "$name" 2>/dev/null || printf 'unknown')")
-    items+=("$name    ${labels[$((${#labels[@]} - 1))]}")
+    if [[ "$name" == "$current" ]]; then
+      items+=("$(printf '%-18s %s' "$name" "${labels[$((${#labels[@]} - 1))]} (current)")")
+    else
+      items+=("$(printf '%-18s %s' "$name" "${labels[$((${#labels[@]} - 1))]}")")
+    fi
   done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 
   [[ "${#names[@]}" -gt 0 ]] || die "no accounts; run: cx login <name>"
-  menu_select "Select Codex account" "${items[@]}" || return $?
+  menu_select "Codex accounts" "${items[@]}" || return $?
   selected="$MENU_SELECTED"
   SELECTED_ACCOUNT="${names[$selected]}"
 }
@@ -424,9 +465,12 @@ codex_rename_menu() {
 }
 
 codex_remove_menu() {
-  local name
+  local name answer
   select_account_name || return $?
   name="$SELECTED_ACCOUNT"
+  printf 'Delete account profile "%s"? Type %s to confirm: ' "$name" "$name"
+  IFS= read -r answer
+  [[ "$answer" == "$name" ]] || return 0
   mkdir -p "$ROOT"
   dir="$(need_profile "$name")"
   rm -rf "$dir"
@@ -438,7 +482,7 @@ codex_remove_menu() {
 codex_menu() {
   local selected
   while true; do
-    menu_select "Codex" "Run with account" "Login account" "Use default account" "Current account" "List accounts" "Status / limits" "Rename account" "Remove account" "Back" || return 0
+    menu_select "Codex" "Run with account" "Login account" "Set default account" "Show current account" "List accounts" "Status and limits" "Rename account" "Remove account" "Back" || return 0
     selected="$MENU_SELECTED"
     case "$selected" in
       0) pick_account "$@"; return $? ;;
@@ -464,7 +508,7 @@ main_menu() {
   local selected
 
   while true; do
-    menu_select "Select CLI" "Codex" "Claude" "Exit" || break
+    menu_select "cx" "Codex" "Claude" "Exit" || break
     selected="$MENU_SELECTED"
     case "$selected" in
       0) codex_menu "$@"; break ;;
@@ -481,15 +525,18 @@ cmd_status() {
   case "${1:-}" in
     --all)
       [[ -d "$ROOT" ]] || return 0
+      section "Status"
       while IFS= read -r name; do
         read_rate_limits "$name"
       done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
       ;;
     "")
       [[ -s "$CURRENT" ]] || die "no current account; run: cx use <name>"
+      section "Status"
       read_rate_limits "$(cat "$CURRENT")"
       ;;
     *)
+      section "Status"
       read_rate_limits "$1"
       ;;
   esac

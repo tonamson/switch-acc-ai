@@ -1,2 +1,5 @@
 # Added by code-review-graph
 .code-review-graph/
+node_modules/
+dist/
+*.tgz
