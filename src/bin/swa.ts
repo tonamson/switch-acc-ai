@@ -2,4 +2,7 @@
 
 import { runProgram } from "../cli/commands.js";
 
-await runProgram();
+runProgram().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
