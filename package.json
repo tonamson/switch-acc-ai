@@ -1,6 +1,6 @@
 {
   "name": "switch-acc-ai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Switch Codex accounts and run Codex with isolated CODEX_HOME profiles.",
   "type": "module",
   "bin": {
