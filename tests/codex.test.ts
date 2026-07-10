@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { ensureProfile, writeCurrentAccount } from "../src/core/accounts.js";
+import { ensureProfile } from "../src/core/accounts.js";
 import type { AppConfig } from "../src/core/config.js";
 import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../src/core/codex.js";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
@@ -10,7 +10,7 @@ import { writeFakeCodex } from "./helpers/fakeCodex.js";
 let oldPath: string | undefined;
 
 async function setup(): Promise<{ config: AppConfig; root: string }> {
-  const root = await mkdtemp(join(tmpdir(), "swa-codex-"));
+  const root = await mkdtemp(join(tmpdir(), "sacc-codex-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   oldPath = process.env.PATH;
@@ -20,7 +20,6 @@ async function setup(): Promise<{ config: AppConfig; root: string }> {
   process.env.CODEX_LOGIN_LOG = join(root, "login.log");
   const config = {
     accountsDir: join(root, "accounts"),
-    currentFile: join(root, "accounts", ".current"),
     sharedHome: join(root, "shared"),
   };
   await mkdir(config.sharedHome, { recursive: true });
@@ -43,16 +42,14 @@ describe("codex integration", () => {
     await expect(readAccountLabel(config, "acc2")).resolves.toBe("acc2@example.com");
   });
 
-  it("reads rate limits and marks current account", async () => {
+  it("reads rate limits", async () => {
     const { config } = await setup();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
 
     const status = await readRateLimits(config, "acc2");
 
     expect(status).toMatchObject({
       account: "acc2",
-      current: true,
       user: "acc2@example.com",
       plan: "plus",
       primary: { usedPercent: "75% used" },
@@ -73,7 +70,6 @@ describe("codex integration", () => {
 
     expect(status).toMatchObject({
       account: "keyed",
-      current: false,
       user: "keyed@example.com",
       plan: "plus",
       primary: { usedPercent: "61% used" },

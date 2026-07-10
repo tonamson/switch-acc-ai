@@ -7,19 +7,16 @@ import {
   isValidAccountName,
   linkSharedProfile,
   listAccounts,
-  readCurrentAccount,
   removeAccount,
   renameAccount,
   requireProfile,
-  writeCurrentAccount,
 } from "../src/core/accounts.js";
 import type { AppConfig } from "../src/core/config.js";
 
 async function testConfig(): Promise<AppConfig> {
-  const root = await mkdtemp(join(tmpdir(), "swa-accounts-"));
+  const root = await mkdtemp(join(tmpdir(), "sacc-accounts-"));
   return {
     accountsDir: join(root, "accounts"),
-    currentFile: join(root, "accounts", ".current"),
     sharedHome: join(root, "shared"),
   };
 }
@@ -45,24 +42,8 @@ describe("account filesystem operations", () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
     await ensureProfile(config, "acc1");
-    await writeFile(config.currentFile, "acc2\n");
 
     expect(await listAccounts(config)).toEqual(["acc1", "acc2"]);
-  });
-
-  it("reads and writes current account", async () => {
-    const config = await testConfig();
-    expect(await readCurrentAccount(config)).toBeNull();
-    await writeCurrentAccount(config, "acc2");
-    expect(await readCurrentAccount(config)).toBe("acc2");
-  });
-
-  it("returns null for a broken current symlink", async () => {
-    const config = await testConfig();
-    await mkdir(config.accountsDir, { recursive: true });
-    await symlink(join(config.accountsDir, "missing"), config.currentFile);
-
-    expect(await readCurrentAccount(config)).toBeNull();
   });
 
   it("requires an existing profile", async () => {
@@ -70,15 +51,30 @@ describe("account filesystem operations", () => {
     await expect(requireProfile(config, "missing")).rejects.toThrow("account not found: missing");
   });
 
-  it("renames current account and updates .current", async () => {
+  it("renames an account", async () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
 
     await renameAccount(config, "acc2", "main");
 
     expect(await listAccounts(config)).toEqual(["main"]);
-    expect(await readCurrentAccount(config)).toBe("main");
+  });
+
+  it("handles symlinked account directories", async () => {
+    const config = await testConfig();
+    const realProfile = join(config.sharedHome, "real-acc");
+    await mkdir(realProfile, { recursive: true });
+    await mkdir(config.accountsDir, { recursive: true });
+    await symlink(realProfile, join(config.accountsDir, "acc2"));
+
+    expect(await listAccounts(config)).toEqual(["acc2"]);
+    expect(await requireProfile(config, "acc2")).toBe(join(config.accountsDir, "acc2"));
+
+    await renameAccount(config, "acc2", "main");
+    expect(await listAccounts(config)).toEqual(["main"]);
+
+    await removeAccount(config, "main");
+    expect(await listAccounts(config)).toEqual([]);
   });
 
   it("renames over a broken destination symlink", async () => {
@@ -92,15 +88,13 @@ describe("account filesystem operations", () => {
     expect(await listAccounts(config)).toEqual(["main"]);
   });
 
-  it("removes current account and clears .current", async () => {
+  it("removes an account", async () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
 
     await removeAccount(config, "acc2");
 
     expect(await listAccounts(config)).toEqual([]);
-    expect(await readCurrentAccount(config)).toBeNull();
   });
 
   it("links shared profile assets when missing", async () => {

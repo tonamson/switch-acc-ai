@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 export type AppConfig = {
   accountsDir: string;
-  currentFile: string;
   sharedHome: string;
 };
 
@@ -16,7 +15,6 @@ export function resolveConfig(
 
   return {
     accountsDir,
-    currentFile: join(accountsDir, ".current"),
     sharedHome,
   };
 }

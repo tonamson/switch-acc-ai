@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
-import { ensureProfile, linkSharedProfile, readCurrentAccount, requireProfile } from "./accounts.js";
+import { ensureProfile, linkSharedProfile, requireProfile } from "./accounts.js";
 import type { AppConfig } from "./config.js";
 
 export type RateWindow = {
@@ -11,7 +11,6 @@ export type RateWindow = {
 
 export type RateLimitStatus = {
   account: string;
-  current: boolean;
   user: string;
   plan: string;
   primary: RateWindow;
@@ -92,7 +91,7 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
     }
   })();
 
-  child.stdin.write('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"swa","version":"dev"},"capabilities":{"experimentalApi":true}}}\n');
+  child.stdin.write('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"sacc","version":"dev"},"capabilities":{"experimentalApi":true}}}\n');
   child.stdin.write('{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}\n');
   if (includeLimits) {
     child.stdin.write('{"jsonrpc":"2.0","id":3,"method":"account/rateLimits/read","params":null}\n');
@@ -142,14 +141,12 @@ export async function readRateLimits(config: AppConfig, name: string): Promise<R
   const primary = getRecord(selectedRateLimits.primary);
   const secondary = getRecord(selectedRateLimits.secondary);
   const credits = getRecord(limitResult.rateLimitResetCredits);
-  const current = await readCurrentAccount(config);
   const legacyCredits = getRecord(legacyRateLimits.credits);
   const resetCredits =
     credits.availableCount ?? legacyCredits.balance ?? "unknown";
 
   return {
     account: name,
-    current: current === name,
     user: String(account.email || account.username || account.accountId || "unknown"),
     plan: String(account.planType || selectedRateLimits.planType || "unknown"),
     primary: { usedPercent: usedPercent(primary), resetLabel: resetLabel(primary) },
@@ -169,9 +166,20 @@ function waitForExit(child: ReturnType<typeof spawn>): Promise<number> {
   });
 }
 
+function restoreTerminal(): void {
+  if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
+    process.stdin.setRawMode(false);
+  }
+  process.stdin.pause();
+  if (process.stdout.isTTY) {
+    process.stdout.write("\x1b[?1049l\x1b[?25h\x1b[0m");
+  }
+}
+
 export async function runCodex(config: AppConfig, name: string, args: string[]): Promise<number> {
   const profilePath = await requireProfile(config, name);
   await linkSharedProfile(config, profilePath);
+  restoreTerminal();
   const child = spawn("codex", args, {
     env: codexEnv(profilePath),
     stdio: "inherit",
@@ -182,6 +190,7 @@ export async function runCodex(config: AppConfig, name: string, args: string[]):
 export async function loginCodex(config: AppConfig, name: string): Promise<number> {
   const profilePath = await ensureProfile(config, name);
   await linkSharedProfile(config, profilePath);
+  restoreTerminal();
   const child = spawn("codex", ["login"], {
     env: codexEnv(profilePath),
     stdio: "inherit",

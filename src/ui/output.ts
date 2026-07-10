@@ -2,19 +2,14 @@ import type { RateLimitStatus } from "../core/codex.js";
 import { brand, command, danger, heading, muted, warning } from "./theme.js";
 
 export type AccountListRow = {
-  marker: "*" | "-";
   profile: string;
   identity: string;
 };
 
 export type StatusRenderRow = RateLimitStatus | { account: string; error: string };
 
-function statusTitle(row: RateLimitStatus): string {
-  return row.current ? `${row.account} current` : row.account;
-}
-
 function title(section: string): string {
-  return `${brand("SWA")}  ${muted(section)}`;
+  return `${brand("Switch Account AI")}  ${muted(section)}`;
 }
 
 function cmd(syntax: string, description: string): string {
@@ -23,10 +18,6 @@ function cmd(syntax: string, description: string): string {
 
 function usage(line: string): string {
   return `  ${command(line)}`;
-}
-
-function currentMarker(value: string): string {
-  return value === "*" ? warning("*") : muted("-");
 }
 
 function percent(value: string): string {
@@ -39,36 +30,31 @@ function percent(value: string): string {
 
 export function formatHelp(): string {
   return [
-    `${brand("SWA")}  ${muted("Codex account switcher")}`,
+    brand("Switch Account AI"),
     "",
     heading("Usage"),
-    usage("swa [command] [account] [codex args]"),
+    usage("sacc [command] [account] [codex args]"),
     "",
     heading("Run"),
-    cmd("swa", "open menu"),
-    cmd("swa <account> [codex args]", "run Codex with account"),
-    cmd("swa run [codex args]", "run current account"),
-    cmd("swa pick [codex args]", "choose account then run"),
-    cmd("swa resume <id> [args]", "resume current account"),
+    cmd("sacc", "open menu"),
+    cmd("sacc <account> [codex args]", "run Codex with account"),
+    cmd("sacc pick [codex args]", "choose account then run"),
     "",
     heading("Accounts"),
-    cmd("swa login <name>", "login Codex OAuth into a profile"),
-    cmd("swa use <name>", "set current account"),
-    cmd("swa current", "print current account"),
-    cmd("swa list", "list accounts"),
-    cmd("swa rename <old> <new>", "rename an account"),
-    cmd("swa remove <name>", "delete an account profile"),
+    cmd("sacc login <name>", "login Codex OAuth into a profile"),
+    cmd("sacc list", "list accounts"),
+    cmd("sacc rename <old> <new>", "rename an account"),
+    cmd("sacc remove <name>", "delete an account profile"),
     "",
     heading("Status"),
-    cmd("swa status", "show current account limits"),
-    cmd("swa status <name>", "show one account limits"),
-    cmd("swa status --all", "show limits for all accounts"),
+    cmd("sacc status <name>", "show one account limits"),
+    cmd("sacc status --all", "show limits for all accounts"),
   ].join("\n");
 }
 
 export function formatAccountsTable(rows: AccountListRow[]): string {
-  const headers = ["use", "profile", "identity"];
-  const tableRows = rows.map((row) => [row.marker, row.profile, row.identity]);
+  const headers = ["profile", "identity"];
+  const tableRows = rows.map((row) => [row.profile, row.identity]);
   const widths = headers.map((header, index) =>
     Math.max(header.length, ...tableRows.map((row) => String(row[index]).length)),
   );
@@ -77,8 +63,6 @@ export function formatAccountsTable(rows: AccountListRow[]): string {
       .map((cell, index) => {
         const value = String(cell).padEnd(widths[index]);
         if (isHeader) return muted(value);
-        if (index === 0) return currentMarker(cell);
-        if (index === 1 && cells[0] === "*") return command(value);
         return value;
       })
       .join("  ");
@@ -100,7 +84,7 @@ export function formatStatus(rows: StatusRenderRow[]): string {
     }
 
     const lines = [
-      `  ${heading(statusTitle(row))}`,
+      `  ${heading(row.account)}`,
       `  ${muted("user".padEnd(13))}${row.user}`,
       `  ${muted("plan".padEnd(13))}${row.plan}`,
       `  ${muted("5h limit".padEnd(13))}${percent(row.primary.usedPercent)} ${muted(`(${row.primary.resetLabel})`)}`,

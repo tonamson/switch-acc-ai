@@ -4,7 +4,7 @@
   "description": "Switch Codex accounts and run Codex with isolated CODEX_HOME profiles.",
   "type": "module",
   "bin": {
-    "swa": "dist/bin/swa.js"
+    "sacc": "dist/bin/sacc.js"
   },
   "files": [
     "dist",
@@ -18,7 +18,7 @@
     "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/bin/swa.js"
+    "start": "node dist/bin/sacc.js"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",

@@ -2,19 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the existing `cx` Bash CLI into a public npm package named `switch-acc-ai` exposing a single `swa` command with TypeScript modules and a polished command-palette CLI.
+**Goal:** Port the existing `cx` Bash CLI into a public npm package named `switch-acc-ai` exposing a single `sacc` command with TypeScript modules and a polished command-palette CLI.
 
-**Architecture:** Build a TypeScript CLI with a thin executable entrypoint, focused core modules for config/accounts/Codex integration, and UI modules for themed output and interactive prompts. Preserve the existing Codex account storage format and command behavior while publishing only the `swa` binary.
+**Architecture:** Build a TypeScript CLI with a thin executable entrypoint, focused core modules for config/accounts/Codex integration, and UI modules for themed output and interactive prompts. Preserve the existing Codex account storage format and command behavior while publishing only the `sacc` binary.
 
 **Tech Stack:** Node.js 20+, TypeScript, commander, @inquirer/prompts, picocolors, ora, cli-table3, Vitest, npm package `bin`.
 
 ## Global Constraints
 
 - Package name: `switch-acc-ai`.
-- Command name: `swa`.
+- Command name: `sacc`.
 - Runtime target: Node.js 20 or newer.
 - Public npm distribution: yes.
-- Expose only the `swa` command. Do not expose `cx` as a compatibility alias.
+- Expose only the `sacc` command. Do not expose `cx` as a compatibility alias.
 - Preserve the existing account-management behavior from `cx`.
 - Keep existing Codex profile data compatible.
 - Do not rewrite or manage Codex authentication itself; continue delegating OAuth to `codex login`.
@@ -33,10 +33,10 @@
 
 Create:
 
-- `package.json`: npm metadata, dependency list, scripts, `bin.swa`.
+- `package.json`: npm metadata, dependency list, scripts, `bin.sacc`.
 - `tsconfig.json`: TypeScript build config.
 - `vitest.config.ts`: test config.
-- `src/bin/swa.ts`: executable entrypoint and top-level error boundary.
+- `src/bin/sacc.ts`: executable entrypoint and top-level error boundary.
 - `src/cli/commands.ts`: commander setup and command routing.
 - `src/core/config.ts`: environment path resolution.
 - `src/core/accounts.ts`: account filesystem operations.
@@ -53,7 +53,7 @@ Create:
 
 Modify:
 
-- `README.md`: document npm usage, `swa` commands, environment variables, migration from `cx`.
+- `README.md`: document npm usage, `sacc` commands, environment variables, migration from `cx`.
 
 Leave alone unless explicitly needed:
 
@@ -68,13 +68,13 @@ Leave alone unless explicitly needed:
 - Create: `package.json`
 - Create: `tsconfig.json`
 - Create: `vitest.config.ts`
-- Create: `src/bin/swa.ts`
+- Create: `src/bin/sacc.ts`
 - Create: `tests/cli.test.ts`
 
 **Interfaces:**
 - Produces: npm scripts `build`, `test`, `typecheck`, `start`.
-- Produces: executable source `src/bin/swa.ts`.
-- Produces: built binary path `dist/bin/swa.js`.
+- Produces: executable source `src/bin/sacc.ts`.
+- Produces: built binary path `dist/bin/sacc.js`.
 
 - [x] **Step 1: Create failing CLI smoke test**
 
@@ -87,9 +87,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = process.cwd();
-const binPath = join(repoRoot, "dist", "bin", "swa.js");
+const binPath = join(repoRoot, "dist", "bin", "sacc.js");
 
-describe("swa binary", () => {
+describe("sacc binary", () => {
   it("builds the executable binary", () => {
     expect(existsSync(binPath)).toBe(true);
   });
@@ -102,7 +102,7 @@ describe("swa binary", () => {
     });
 
     expect(output).toContain("Usage:");
-    expect(output).toContain("swa");
+    expect(output).toContain("sacc");
     expect(output).toContain("Codex account switcher");
   });
 });
@@ -119,7 +119,7 @@ Create `package.json`:
   "description": "Switch Codex accounts and run Codex with isolated CODEX_HOME profiles.",
   "type": "module",
   "bin": {
-    "swa": "dist/bin/swa.js"
+    "sacc": "dist/bin/sacc.js"
   },
   "files": [
     "dist",
@@ -133,7 +133,7 @@ Create `package.json`:
     "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/bin/swa.js"
+    "start": "node dist/bin/sacc.js"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
@@ -187,7 +187,7 @@ export default defineConfig({
 
 - [x] **Step 3: Create minimal executable entrypoint**
 
-Create `src/bin/swa.ts`:
+Create `src/bin/sacc.ts`:
 
 ```ts
 #!/usr/bin/env node
@@ -218,7 +218,7 @@ Expected: test fails because `--help` is not implemented by the minimal entrypoi
 
 - [x] **Step 6: Add commander help shell**
 
-Replace `src/bin/swa.ts` with:
+Replace `src/bin/sacc.ts` with:
 
 ```ts
 #!/usr/bin/env node
@@ -228,13 +228,13 @@ import { Command } from "commander";
 const program = new Command();
 
 program
-  .name("swa")
+  .name("sacc")
   .description("Codex account switcher")
   .helpOption("-h, --help", "show help");
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`swa: ${message}`);
+  console.error(`sacc: ${message}`);
   process.exitCode = 1;
 });
 ```
@@ -256,7 +256,7 @@ Expected: all commands pass.
 Run:
 
 ```bash
-git add package.json package-lock.json tsconfig.json vitest.config.ts src/bin/swa.ts tests/cli.test.ts
+git add package.json package-lock.json tsconfig.json vitest.config.ts src/bin/sacc.ts tests/cli.test.ts
 git commit -m "feat: scaffold switch-acc-ai cli"
 ```
 
@@ -271,13 +271,13 @@ git commit -m "feat: scaffold switch-acc-ai cli"
 - Create: `tests/accounts.test.ts`
 
 **Interfaces:**
-- Produces: `type AppConfig = { accountsDir: string; currentFile: string; sharedHome: string }`.
+- Produces: `type AppConfig = { accountsDir: string; selectedFile: string; sharedHome: string }`.
 - Produces: `resolveConfig(env?: NodeJS.ProcessEnv, homeDir?: string): AppConfig`.
 - Produces: `isValidAccountName(name: string): boolean`.
 - Produces: `profileDir(config: AppConfig, name: string): string`.
 - Produces: `ensureValidAccountName(name: string): void`.
-- Produces: `readCurrentAccount(config: AppConfig): Promise<string | null>`.
-- Produces: `writeCurrentAccount(config: AppConfig, name: string): Promise<void>`.
+- Produces: `readSelectedAccount(config: AppConfig): Promise<string | null>`.
+- Produces: `writeSelectedAccount(config: AppConfig, name: string): Promise<void>`.
 - Produces: `listAccounts(config: AppConfig): Promise<string[]>`.
 - Produces: `ensureProfile(config: AppConfig, name: string): Promise<string>`.
 - Produces: `requireProfile(config: AppConfig, name: string): Promise<string>`.
@@ -294,11 +294,11 @@ import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/core/config.js";
 
 describe("resolveConfig", () => {
-  it("uses default account and shared home paths", () => {
+  it("uses account and shared home fallback paths", () => {
     const config = resolveConfig({}, "/tmp/example-home");
 
     expect(config.accountsDir).toBe("/tmp/example-home/.codex-accounts");
-    expect(config.currentFile).toBe("/tmp/example-home/.codex-accounts/.current");
+    expect(config.selectedFile).toBe("/tmp/example-home/.codex-accounts/.selected");
     expect(config.sharedHome).toBe("/tmp/example-home/.codex");
   });
 
@@ -312,7 +312,7 @@ describe("resolveConfig", () => {
     );
 
     expect(config.accountsDir).toBe("/tmp/accounts");
-    expect(config.currentFile).toBe("/tmp/accounts/.current");
+    expect(config.selectedFile).toBe("/tmp/accounts/.selected");
     expect(config.sharedHome).toBe("/tmp/shared-codex");
   });
 });
@@ -332,19 +332,19 @@ import {
   isValidAccountName,
   linkSharedProfile,
   listAccounts,
-  readCurrentAccount,
+  readSelectedAccount,
   removeAccount,
   renameAccount,
   requireProfile,
-  writeCurrentAccount,
+  writeSelectedAccount,
 } from "../src/core/accounts.js";
 import type { AppConfig } from "../src/core/config.js";
 
 async function testConfig(): Promise<AppConfig> {
-  const root = await mkdtemp(join(tmpdir(), "swa-accounts-"));
+  const root = await mkdtemp(join(tmpdir(), "sacc-accounts-"));
   return {
     accountsDir: join(root, "accounts"),
-    currentFile: join(root, "accounts", ".current"),
+    selectedFile: join(root, "accounts", ".selected"),
     sharedHome: join(root, "shared"),
   };
 }
@@ -370,16 +370,16 @@ describe("account filesystem operations", () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
     await ensureProfile(config, "acc1");
-    await writeFile(config.currentFile, "acc2\n");
+    await writeFile(config.selectedFile, "acc2\n");
 
     expect(await listAccounts(config)).toEqual(["acc1", "acc2"]);
   });
 
-  it("reads and writes current account", async () => {
+  it("reads and writes selected account", async () => {
     const config = await testConfig();
-    expect(await readCurrentAccount(config)).toBeNull();
-    await writeCurrentAccount(config, "acc2");
-    expect(await readCurrentAccount(config)).toBe("acc2");
+    expect(await readSelectedAccount(config)).toBeNull();
+    await writeSelectedAccount(config, "acc2");
+    expect(await readSelectedAccount(config)).toBe("acc2");
   });
 
   it("requires an existing profile", async () => {
@@ -387,26 +387,26 @@ describe("account filesystem operations", () => {
     await expect(requireProfile(config, "missing")).rejects.toThrow("account not found: missing");
   });
 
-  it("renames current account and updates .current", async () => {
+  it("renames selected account and updates .selected", async () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
+    await writeSelectedAccount(config, "acc2");
 
     await renameAccount(config, "acc2", "main");
 
     expect(await listAccounts(config)).toEqual(["main"]);
-    expect(await readCurrentAccount(config)).toBe("main");
+    expect(await readSelectedAccount(config)).toBe("main");
   });
 
-  it("removes current account and clears .current", async () => {
+  it("removes selected account and clears .selected", async () => {
     const config = await testConfig();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
+    await writeSelectedAccount(config, "acc2");
 
     await removeAccount(config, "acc2");
 
     expect(await listAccounts(config)).toEqual([]);
-    expect(await readCurrentAccount(config)).toBeNull();
+    expect(await readSelectedAccount(config)).toBeNull();
   });
 
   it("links shared profile assets when missing", async () => {
@@ -444,7 +444,7 @@ import { homedir } from "node:os";
 
 export type AppConfig = {
   accountsDir: string;
-  currentFile: string;
+  selectedFile: string;
   sharedHome: string;
 };
 
@@ -457,7 +457,7 @@ export function resolveConfig(
 
   return {
     accountsDir,
-    currentFile: join(accountsDir, ".current"),
+    selectedFile: join(accountsDir, ".selected"),
     sharedHome,
   };
 }
@@ -509,18 +509,18 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-export async function readCurrentAccount(config: AppConfig): Promise<string | null> {
-  if (!(await pathExists(config.currentFile))) {
+export async function readSelectedAccount(config: AppConfig): Promise<string | null> {
+  if (!(await pathExists(config.selectedFile))) {
     return null;
   }
-  const value = (await readFile(config.currentFile, "utf8")).trim();
+  const value = (await readFile(config.selectedFile, "utf8")).trim();
   return value.length > 0 ? value : null;
 }
 
-export async function writeCurrentAccount(config: AppConfig, name: string): Promise<void> {
+export async function writeSelectedAccount(config: AppConfig, name: string): Promise<void> {
   ensureValidAccountName(name);
   await mkdir(config.accountsDir, { recursive: true });
-  await writeFile(config.currentFile, `${name}\n`);
+  await writeFile(config.selectedFile, `${name}\n`);
 }
 
 export async function listAccounts(config: AppConfig): Promise<string[]> {
@@ -562,16 +562,16 @@ export async function renameAccount(config: AppConfig, oldName: string, newName:
   }
   await mkdir(config.accountsDir, { recursive: true });
   await rename(oldDir, newDir);
-  if ((await readCurrentAccount(config)) === oldName) {
-    await writeCurrentAccount(config, newName);
+  if ((await readSelectedAccount(config)) === oldName) {
+    await writeSelectedAccount(config, newName);
   }
 }
 
 export async function removeAccount(config: AppConfig, name: string): Promise<void> {
   const dir = await requireProfile(config, name);
   await rm(dir, { recursive: true, force: true });
-  if ((await readCurrentAccount(config)) === name) {
-    await rm(config.currentFile, { force: true });
+  if ((await readSelectedAccount(config)) === name) {
+    await rm(config.selectedFile, { force: true });
   }
 }
 
@@ -620,7 +620,7 @@ git commit -m "feat: add account storage core"
 - Consumes: `AppConfig`, `requireProfile`, `ensureProfile`, `linkSharedProfile`.
 - Produces: `type CodexAccount = { user: string; plan: string }`.
 - Produces: `type RateWindow = { usedPercent: string; resetLabel: string }`.
-- Produces: `type RateLimitStatus = { account: string; current: boolean; user: string; plan: string; primary: RateWindow; secondary: RateWindow; resetCredits: string; reached?: string }`.
+- Produces: `type RateLimitStatus = { account: string; selected: boolean; user: string; plan: string; primary: RateWindow; secondary: RateWindow; resetCredits: string; reached?: string }`.
 - Produces: `readAccountLabel(config: AppConfig, name: string): Promise<string>`.
 - Produces: `readRateLimits(config: AppConfig, name: string): Promise<RateLimitStatus>`.
 - Produces: `runCodex(config: AppConfig, name: string, args: string[]): Promise<number>`.
@@ -689,7 +689,7 @@ import { mkdtemp, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureProfile, writeCurrentAccount } from "../src/core/accounts.js";
+import { ensureProfile, writeSelectedAccount } from "../src/core/accounts.js";
 import type { AppConfig } from "../src/core/config.js";
 import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../src/core/codex.js";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
@@ -697,7 +697,7 @@ import { writeFakeCodex } from "./helpers/fakeCodex.js";
 let oldPath: string | undefined;
 
 async function setup(): Promise<{ config: AppConfig; root: string }> {
-  const root = await mkdtemp(join(tmpdir(), "swa-codex-"));
+  const root = await mkdtemp(join(tmpdir(), "sacc-codex-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   oldPath = process.env.PATH;
@@ -707,7 +707,7 @@ async function setup(): Promise<{ config: AppConfig; root: string }> {
   process.env.CODEX_LOGIN_LOG = join(root, "login.log");
   const config = {
     accountsDir: join(root, "accounts"),
-    currentFile: join(root, "accounts", ".current"),
+    selectedFile: join(root, "accounts", ".selected"),
     sharedHome: join(root, "shared"),
   };
   await mkdir(config.sharedHome, { recursive: true });
@@ -729,16 +729,16 @@ describe("codex integration", () => {
     await expect(readAccountLabel(config, "acc2")).resolves.toBe("acc2@example.com");
   });
 
-  it("reads rate limits and marks current account", async () => {
+  it("reads rate limits and marks selected account", async () => {
     const { config } = await setup();
     await ensureProfile(config, "acc2");
-    await writeCurrentAccount(config, "acc2");
+    await writeSelectedAccount(config, "acc2");
 
     const status = await readRateLimits(config, "acc2");
 
     expect(status).toMatchObject({
       account: "acc2",
-      current: true,
+      selected: true,
       user: "acc2@example.com",
       plan: "plus",
       primary: { usedPercent: "75% used" },
@@ -787,7 +787,7 @@ Create `src/core/codex.ts`:
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
-import { ensureProfile, linkSharedProfile, readCurrentAccount, requireProfile } from "./accounts.js";
+import { ensureProfile, linkSharedProfile, readSelectedAccount, requireProfile } from "./accounts.js";
 import type { AppConfig } from "./config.js";
 
 export type RateWindow = {
@@ -797,7 +797,7 @@ export type RateWindow = {
 
 export type RateLimitStatus = {
   account: string;
-  current: boolean;
+  selected: boolean;
   user: string;
   plan: string;
   primary: RateWindow;
@@ -862,7 +862,7 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
     }
   })();
 
-  child.stdin.write('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"swa","version":"dev"},"capabilities":{"experimentalApi":true}}}\n');
+  child.stdin.write('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"sacc","version":"dev"},"capabilities":{"experimentalApi":true}}}\n');
   child.stdin.write('{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}\n');
   if (includeLimits) {
     child.stdin.write('{"jsonrpc":"2.0","id":3,"method":"account/rateLimits/read","params":null}\n');
@@ -909,11 +909,11 @@ export async function readRateLimits(config: AppConfig, name: string): Promise<R
   const primary = getRecord(rateLimits.primary);
   const secondary = getRecord(rateLimits.secondary);
   const credits = getRecord(limitResult.rateLimitResetCredits);
-  const current = await readCurrentAccount(config);
+  const selected = await readSelectedAccount(config);
 
   return {
     account: name,
-    current: current === name,
+    selected: selected === name,
     user: String(account.email || account.username || account.accountId || "unknown"),
     plan: String(account.planType || rateLimits.planType || "unknown"),
     primary: { usedPercent: usedPercent(primary), resetLabel: resetLabel(primary) },
@@ -999,12 +999,12 @@ import { describe, expect, it } from "vitest";
 import { formatAccountsTable, formatError, formatHelp, formatStatus } from "../src/ui/output.js";
 
 describe("output formatting", () => {
-  it("formats help with swa command sections", () => {
+  it("formats help with sacc command sections", () => {
     const output = formatHelp();
 
-    expect(output).toContain("SWA");
+    expect(output).toContain("Switch Account AI");
     expect(output).toContain("Run");
-    expect(output).toContain("swa pick [codex args]");
+    expect(output).toContain("sacc pick [codex args]");
     expect(output).toContain("Accounts");
     expect(output).toContain("Status");
   });
@@ -1025,7 +1025,7 @@ describe("output formatting", () => {
     const output = formatStatus([
       {
         account: "acc2",
-        current: true,
+        selected: true,
         user: "acc2@example.com",
         plan: "plus",
         primary: { usedPercent: "75% used", resetLabel: "resets later" },
@@ -1036,18 +1036,18 @@ describe("output formatting", () => {
     ]);
 
     expect(output).toContain("Status");
-    expect(output).toContain("acc2 current");
+    expect(output).toContain("acc2 selected");
     expect(output).toContain("75% used");
     expect(output).toContain("broken");
     expect(output).toContain("no response from codex app-server");
   });
 
   it("formats actionable errors", () => {
-    const output = formatError("account not found: acc3", "Run swa list to see profiles.");
+    const output = formatError("account not found: acc3", "Run sacc list to see profiles.");
 
     expect(output).toContain("error");
     expect(output).toContain("account not found: acc3");
-    expect(output).toContain("Run swa list to see profiles.");
+    expect(output).toContain("Run sacc list to see profiles.");
   });
 });
 ```
@@ -1111,27 +1111,27 @@ export type StatusRenderRow = RateLimitStatus | { account: string; error: string
 
 export function formatHelp(): string {
   return [
-    `${brand("SWA")}  ${muted("Codex account switcher")}`,
+    `${brand("Switch Account AI")}  ${muted("Codex account switcher")}`,
     "",
     heading("Run"),
-    "  swa                         open menu",
-    "  swa <account> [codex args]   run Codex with account",
-    "  swa run [codex args]         run current account",
-    "  swa pick [codex args]        choose account then run",
-    "  swa resume <id> [args]       resume current account",
+    "  sacc                         open menu",
+    "  sacc <account> [codex args]   run Codex with account",
+    "  sacc run [codex args]         run selected account",
+    "  sacc pick [codex args]        choose account then run",
+    "  sacc resume <id> [args]       resume selected account",
     "",
     heading("Accounts"),
-    "  swa login <name>             login Codex OAuth into a profile",
-    "  swa use <name>               set current account",
-    "  swa current                  print current account",
-    "  swa list                     list accounts",
-    "  swa rename <old> <new>       rename an account",
-    "  swa remove <name>            delete an account profile",
+    "  sacc login <name>             login Codex OAuth into a profile",
+    "  sacc use <name>               set selected account",
+    "  sacc selected                  print selected account",
+    "  sacc list                     list accounts",
+    "  sacc rename <old> <new>       rename an account",
+    "  sacc remove <name>            delete an account profile",
     "",
     heading("Status"),
-    "  swa status                   show current account limits",
-    "  swa status <name>            show one account limits",
-    "  swa status --all             show limits for all accounts",
+    "  sacc status                   show selected account limits",
+    "  sacc status <name>            show one account limits",
+    "  sacc status --all             show limits for all accounts",
   ].join("\n");
 }
 
@@ -1152,7 +1152,7 @@ export function formatStatus(rows: StatusRenderRow[]): string {
     if ("error" in row) {
       return [`${warning(row.account)}`, `  error         ${row.error}`].join("\n");
     }
-    const suffix = row.current ? " current" : "";
+    const suffix = row.selected ? " selected" : "";
     const lines = [
       `${heading(row.account)}${muted(suffix)}`,
       `  user          ${row.user}`,
@@ -1203,7 +1203,7 @@ git commit -m "feat: add cli output rendering"
 ### Task 5: Command Routing And Non-Interactive Behavior
 
 **Files:**
-- Modify: `src/bin/swa.ts`
+- Modify: `src/bin/sacc.ts`
 - Create: `src/cli/commands.ts`
 - Modify: `tests/cli.test.ts`
 
@@ -1225,13 +1225,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
 
 const repoRoot = process.cwd();
-const binPath = join(repoRoot, "dist", "bin", "swa.js");
+const binPath = join(repoRoot, "dist", "bin", "sacc.js");
 
 let root = "";
 let env: NodeJS.ProcessEnv;
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "swa-cli-"));
+  root = await mkdtemp(join(tmpdir(), "sacc-cli-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   env = {
@@ -1256,11 +1256,11 @@ function run(args: string[], input?: string): string {
   });
 }
 
-describe("swa cli", () => {
+describe("sacc cli", () => {
   it("prints help", () => {
     const output = run(["--help"]);
-    expect(output).toContain("SWA");
-    expect(output).toContain("swa pick [codex args]");
+    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("sacc pick [codex args]");
   });
 
   it("logs in and lists accounts", async () => {
@@ -1271,15 +1271,15 @@ describe("swa cli", () => {
     expect(output).toContain("acc2@example.com");
   });
 
-  it("sets and prints current account", () => {
+  it("sets and prints selected account", () => {
     run(["use", "acc2"]);
-    expect(run(["current"]).trim()).toBe("acc2");
+    expect(run(["selected"]).trim()).toBe("acc2");
   });
 
-  it("shows current status", () => {
+  it("shows selected status", () => {
     const output = run(["status"]);
     expect(output).toContain("Status");
-    expect(output).toContain("acc2 current");
+    expect(output).toContain("acc2 selected");
     expect(output).toContain("75% used");
   });
 
@@ -1315,11 +1315,11 @@ import { Command } from "commander";
 import {
   ensureProfile,
   listAccounts,
-  readCurrentAccount,
+  readSelectedAccount,
   removeAccount,
   renameAccount,
   requireProfile,
-  writeCurrentAccount,
+  writeSelectedAccount,
 } from "../core/accounts.js";
 import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../core/codex.js";
 import { resolveConfig, type AppConfig } from "../core/config.js";
@@ -1331,10 +1331,10 @@ export type CreateProgramOptions = {
 
 function hintForError(message: string): string | undefined {
   if (message.startsWith("account not found:")) {
-    return "Run swa login <name> to create it, or swa list to see profiles.";
+    return "Run sacc login <name> to create it, or sacc list to see profiles.";
   }
-  if (message.includes("no current account")) {
-    return "Run swa use <name> or swa pick.";
+  if (message.includes("no selected account")) {
+    return "Run sacc use <name> or sacc pick.";
   }
   if (message.startsWith("invalid account name:")) {
     return "Use letters, numbers, dot, underscore, or dash.";
@@ -1342,20 +1342,20 @@ function hintForError(message: string): string | undefined {
   return undefined;
 }
 
-async function currentOrThrow(config: AppConfig): Promise<string> {
-  const current = await readCurrentAccount(config);
-  if (!current) {
-    throw new Error("no current account");
+async function selectedOrThrow(config: AppConfig): Promise<string> {
+  const selected = await readSelectedAccount(config);
+  if (!selected) {
+    throw new Error("no selected account");
   }
-  return current;
+  return selected;
 }
 
 async function printList(config: AppConfig): Promise<void> {
-  const current = await readCurrentAccount(config);
+  const selected = await readSelectedAccount(config);
   const rows = [];
   for (const name of await listAccounts(config)) {
     rows.push({
-      marker: name === current ? "*" as const : "-" as const,
+      marker: name === selected ? "*" as const : "-" as const,
       profile: name,
       identity: await readAccountLabel(config, name).catch(() => "unknown"),
     });
@@ -1382,7 +1382,7 @@ async function printStatus(config: AppConfig, target?: string, all = false): Pro
     return;
   }
 
-  const name = target || (await currentOrThrow(config));
+  const name = target || (await selectedOrThrow(config));
   console.log(formatStatus([await readRateLimits(config, name)]));
 }
 
@@ -1391,7 +1391,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   const program = new Command();
 
   program
-    .name("swa")
+    .name("sacc")
     .description("Codex account switcher")
     .helpOption("-h, --help", "show help")
     .addHelpText("beforeAll", formatHelp())
@@ -1404,12 +1404,12 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
 
   program.command("use <name>").action(async (name: string) => {
     await requireProfile(config, name);
-    await writeCurrentAccount(config, name);
+    await writeSelectedAccount(config, name);
     console.log(name);
   });
 
-  program.command("current").action(async () => {
-    console.log(await currentOrThrow(config));
+  program.command("selected").action(async () => {
+    console.log(await selectedOrThrow(config));
   });
 
   program.command("list").action(async () => printList(config));
@@ -1419,11 +1419,11 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   });
 
   program.command("run").allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "codex args").action(async (args: string[]) => {
-    process.exitCode = await runCodex(config, await currentOrThrow(config), args);
+    process.exitCode = await runCodex(config, await selectedOrThrow(config), args);
   });
 
   program.command("resume <id> [args...]").allowUnknownOption(true).allowExcessArguments(true).action(async (id: string, args: string[]) => {
-    process.exitCode = await runCodex(config, await currentOrThrow(config), ["--resume", id, ...args]);
+    process.exitCode = await runCodex(config, await selectedOrThrow(config), ["--resume", id, ...args]);
   });
 
   program.command("pick").allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "codex args").action(async (args: string[]) => {
@@ -1432,7 +1432,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
       await pickAndRunAccount(config, args);
       return;
     }
-    throw new Error("swa pick requires an interactive terminal; use swa <account> [codex args] in scripts");
+    throw new Error("sacc pick requires an interactive terminal; use sacc <account> [codex args] in scripts");
   });
 
   program.command("rename <oldName> <newName>").action(async (oldName: string, newName: string) => {
@@ -1481,7 +1481,7 @@ export async function runProgram(argv: string[] = process.argv): Promise<void> {
 }
 ```
 
-Replace `src/bin/swa.ts` with:
+Replace `src/bin/sacc.ts` with:
 
 ```ts
 #!/usr/bin/env node
@@ -1501,15 +1501,15 @@ npm test -- tests/cli.test.ts
 npm run typecheck
 ```
 
-Expected: all commands pass. If commander default help duplicates the custom help, adjust `createProgram()` to use `program.configureHelp()` or a custom `--help` action while keeping tests green.
+Expected: all commands pass. If commander built-in help duplicates the custom help, adjust `createProgram()` to use `program.configureHelp()` or a custom `--help` action while keeping tests green.
 
 - [x] **Step 5: Commit non-interactive CLI**
 
 Run:
 
 ```bash
-git add src/bin/swa.ts src/cli/commands.ts tests/cli.test.ts
-git commit -m "feat: add swa command routing"
+git add src/bin/sacc.ts src/cli/commands.ts tests/cli.test.ts
+git commit -m "feat: add sacc command routing"
 ```
 
 ---
@@ -1533,8 +1533,8 @@ Append to `tests/cli.test.ts`:
 ```ts
   it("prints help instead of opening menu when stdin is not interactive", () => {
     const output = run([]);
-    expect(output).toContain("SWA");
-    expect(output).toContain("swa <account> [codex args]");
+    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("sacc <account> [codex args]");
   });
 ```
 
@@ -1547,7 +1547,7 @@ npm run build
 npm test -- tests/cli.test.ts
 ```
 
-Expected: PASS with current non-interactive behavior. This locks in safe behavior for tests and pipes.
+Expected: PASS with selected non-interactive behavior. This locks in safe behavior for tests and pipes.
 
 - [x] **Step 3: Implement interactive menu module**
 
@@ -1559,10 +1559,10 @@ import type { AppConfig } from "../core/config.js";
 import {
   ensureProfile,
   listAccounts,
-  readCurrentAccount,
+  readSelectedAccount,
   removeAccount,
   renameAccount,
-  writeCurrentAccount,
+  writeSelectedAccount,
 } from "../core/accounts.js";
 import { loginCodex, readRateLimits, runCodex } from "../core/codex.js";
 import { formatStatus } from "./output.js";
@@ -1570,13 +1570,13 @@ import { formatStatus } from "./output.js";
 async function chooseAccount(config: AppConfig): Promise<string> {
   const accounts = await listAccounts(config);
   if (accounts.length === 0) {
-    throw new Error("no accounts; run: swa login <name>");
+    throw new Error("no accounts; run: sacc login <name>");
   }
-  const current = await readCurrentAccount(config);
+  const selected = await readSelectedAccount(config);
   return select({
-    message: `SWA command palette / current ${current || "none"}`,
+    message: `Switch Account AI command palette / selected ${selected || "none"}`,
     choices: accounts.map((name) => ({
-      name: name === current ? `${name} current` : name,
+      name: name === selected ? `${name} selected` : name,
       value: name,
     })),
   });
@@ -1584,18 +1584,18 @@ async function chooseAccount(config: AppConfig): Promise<string> {
 
 export async function pickAndRunAccount(config: AppConfig, forwardedArgs: string[] = []): Promise<void> {
   const name = await chooseAccount(config);
-  await writeCurrentAccount(config, name);
+  await writeSelectedAccount(config, name);
   process.exitCode = await runCodex(config, name, forwardedArgs);
 }
 
 export async function openMainMenu(config: AppConfig, forwardedArgs: string[] = []): Promise<void> {
   const action = await select({
-    message: "SWA command palette",
+    message: "Switch Account AI command palette",
     choices: [
       { name: "Run with account", value: "run" },
       { name: "Login account", value: "login" },
-      { name: "Set default account", value: "use" },
-      { name: "Show current account", value: "current" },
+      { name: "Set active account", value: "use" },
+      { name: "Show selected account", value: "selected" },
       { name: "List accounts", value: "list" },
       { name: "Status and limits", value: "status" },
       { name: "Rename account", value: "rename" },
@@ -1618,12 +1618,12 @@ export async function openMainMenu(config: AppConfig, forwardedArgs: string[] = 
   }
   if (action === "use") {
     const name = await chooseAccount(config);
-    await writeCurrentAccount(config, name);
+    await writeSelectedAccount(config, name);
     console.log(name);
     return;
   }
-  if (action === "current") {
-    console.log((await readCurrentAccount(config)) || "none");
+  if (action === "selected") {
+    console.log((await readSelectedAccount(config)) || "none");
     return;
   }
   if (action === "list") {
@@ -1721,9 +1721,9 @@ describe("package metadata", () => {
     engines: Record<string, string>;
   };
 
-  it("publishes switch-acc-ai with only the swa binary", () => {
+  it("publishes switch-acc-ai with only the sacc binary", () => {
     expect(pkg.name).toBe("switch-acc-ai");
-    expect(pkg.bin).toEqual({ swa: "dist/bin/swa.js" });
+    expect(pkg.bin).toEqual({ sacc: "dist/bin/sacc.js" });
   });
 
   it("requires Node 20 or newer", () => {
@@ -1739,50 +1739,50 @@ Replace README command examples so the npm package is primary. Include this cont
 ```md
 # switch-acc-ai
 
-`switch-acc-ai` provides the `swa` command for running Codex with isolated `CODEX_HOME` account profiles.
+`switch-acc-ai` provides the `sacc` command for running Codex with isolated `CODEX_HOME` account profiles.
 
 ## Install
 
 ```bash
 npx switch-acc-ai
 npm install -g switch-acc-ai
-swa status
+sacc status
 ```
 
 ## Account Storage
 
-Profiles are stored in `~/.codex-accounts/<name>` by default. The current account is stored in `~/.codex-accounts/.current`.
+Profiles are stored in `~/.codex-accounts/<name>` unless overridden. The selected account is stored in `~/.codex-accounts/.selected`.
 
 `CODEX_ACCOUNTS_DIR` changes the profile root. `CODEX_SHARED_HOME` changes the shared Codex home used for linking `skills`, `plugins`, `sessions`, and `config.toml`.
 
 ## Commands
 
 ```bash
-swa
-swa login main
-swa use main
-swa current
-swa list
-swa status
-swa status --all
-swa pick --model gpt-5
-swa main --model gpt-5
-swa resume <session-id>
-swa rename main backup
-swa remove backup
+sacc
+sacc login main
+sacc use main
+sacc selected
+sacc list
+sacc status
+sacc status --all
+sacc pick --model gpt-5
+sacc main --model gpt-5
+sacc resume <session-id>
+sacc rename main backup
+sacc remove backup
 ```
 
 ## Migration From cx
 
-The old Bash command was `cx`. The npm package exposes only `swa`.
+The old Bash command was `cx`. The npm package exposes only `sacc`.
 
 ```bash
 cx status        # old
-swa status       # new
+sacc status       # new
 ```
 ```
 
-Keep any useful existing Vietnamese explanation if desired, but all examples must use `swa`.
+Keep any useful existing Vietnamese explanation if desired, but all examples must use `sacc`.
 
 - [x] **Step 3: Run package and docs checks**
 
@@ -1813,7 +1813,7 @@ Run:
 
 ```bash
 git add README.md package.json tests/package.test.ts
-git commit -m "docs: document swa npm usage"
+git commit -m "docs: document sacc npm usage"
 ```
 
 ---
@@ -1853,20 +1853,20 @@ Expected: both commands pass.
 Run:
 
 ```bash
-node dist/bin/swa.js --help
+node dist/bin/sacc.js --help
 ```
 
-Expected: output contains `SWA`, `Codex account switcher`, and `swa status --all`.
+Expected: output contains `Switch Account AI`, `Codex account switcher`, and `sacc status --all`.
 
 - [x] **Step 4: Run local package smoke command**
 
 Run:
 
 ```bash
-npm exec -- swa --help
+npm exec -- sacc --help
 ```
 
-Expected: output contains `SWA` and exits 0.
+Expected: output contains `Switch Account AI` and exits 0.
 
 - [x] **Step 5: Confirm worktree state**
 
@@ -1884,7 +1884,7 @@ If Step 1-5 required fixes, commit them:
 
 ```bash
 git add package.json package-lock.json tsconfig.json vitest.config.ts src tests README.md
-git commit -m "fix: stabilize swa package verification"
+git commit -m "fix: stabilize sacc package verification"
 ```
 
 If no fixes were required, do not create an empty commit.

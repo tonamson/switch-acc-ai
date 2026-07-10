@@ -1,6 +1,6 @@
 # switch-acc-ai
 
-`switch-acc-ai` provides the `swa` command for running Codex with isolated `CODEX_HOME` account profiles.
+`switch-acc-ai` provides the `sacc` command for running Codex with isolated `CODEX_HOME` account profiles.
 
 Each account profile is stored separately, while shared Codex assets can still be linked from your main Codex home.
 
@@ -16,21 +16,15 @@ Or install globally:
 
 ```bash
 npm install -g switch-acc-ai
-swa status
+sacc status
 ```
 
 ## Account Storage
 
-Profiles are stored here by default:
+Profiles are stored here unless overridden:
 
 ```bash
 ~/.codex-accounts/<name>
-```
-
-The current account is stored in:
-
-```bash
-~/.codex-accounts/.current
 ```
 
 Codex OAuth is still handled by `codex login`. This package only switches the profile directory used as `CODEX_HOME`.
@@ -47,19 +41,17 @@ config.toml
 ## Commands
 
 ```bash
-swa
-swa login main
-swa use main
-swa current
-swa list
-swa status
-swa status acc2
-swa status --all
-swa pick --model gpt-5
-swa main --model gpt-5
-swa resume <session-id>
-swa rename main backup
-swa remove backup
+sacc
+sacc login main
+sacc list
+sacc status
+sacc status acc2
+sacc status --all
+sacc pick --model gpt-5
+sacc main --model gpt-5
+sacc resume <session-id>
+sacc rename main backup
+sacc remove backup
 ```
 
 ## Environment
@@ -67,22 +59,22 @@ swa remove backup
 Change the account profile root:
 
 ```bash
-CODEX_ACCOUNTS_DIR=~/my-codex-accounts swa list
+CODEX_ACCOUNTS_DIR=~/my-codex-accounts sacc list
 ```
 
 Change the shared Codex home used for linked assets:
 
 ```bash
-CODEX_SHARED_HOME=~/my-codex-home swa main
+CODEX_SHARED_HOME=~/my-codex-home sacc main
 ```
 
 ## Migration From cx
 
-The old Bash command was `cx`. The npm package exposes only `swa`.
+The old Bash command was `cx`. The npm package exposes only `sacc`.
 
 ```bash
 cx status        # old
-swa status       # new
+sacc status       # new
 ```
 
 Existing profiles in `~/.codex-accounts` remain compatible.

@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/core/config.js";
 
 describe("resolveConfig", () => {
-  it("uses default account and shared home paths", () => {
+  it("uses account and shared home fallback paths", () => {
     const config = resolveConfig({}, "/tmp/example-home");
 
     expect(config.accountsDir).toBe("/tmp/example-home/.codex-accounts");
-    expect(config.currentFile).toBe("/tmp/example-home/.codex-accounts/.current");
     expect(config.sharedHome).toBe("/tmp/example-home/.codex");
   });
 
@@ -20,7 +19,6 @@ describe("resolveConfig", () => {
     );
 
     expect(config.accountsDir).toBe("/tmp/accounts");
-    expect(config.currentFile).toBe("/tmp/accounts/.current");
     expect(config.sharedHome).toBe("/tmp/shared-codex");
   });
 });

@@ -8,9 +8,9 @@ describe("package metadata", () => {
     engines: Record<string, string>;
   };
 
-  it("publishes switch-acc-ai with only the swa binary", () => {
+  it("publishes switch-acc-ai with only the sacc binary", () => {
     expect(pkg.name).toBe("switch-acc-ai");
-    expect(pkg.bin).toEqual({ swa: "dist/bin/swa.js" });
+    expect(pkg.bin).toEqual({ sacc: "dist/bin/sacc.js" });
   });
 
   it("requires Node 20 or newer", () => {

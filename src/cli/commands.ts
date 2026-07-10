@@ -1,11 +1,9 @@
 import { Command } from "commander";
 import {
   listAccounts,
-  readCurrentAccount,
   removeAccount,
   renameAccount,
   requireProfile,
-  writeCurrentAccount,
 } from "../core/accounts.js";
 import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../core/codex.js";
 import { resolveConfig, type AppConfig } from "../core/config.js";
@@ -17,10 +15,7 @@ export type CreateProgramOptions = {
 
 function hintForError(message: string): string | undefined {
   if (message.startsWith("account not found:")) {
-    return "Run swa login <name> to create it, or swa list to see profiles.";
-  }
-  if (message.includes("no current account")) {
-    return "Run swa use <name> or swa pick.";
+    return "Run sacc login <name> to create it, or sacc list to see profiles.";
   }
   if (message.startsWith("invalid account name:")) {
     return "Use letters, numbers, dot, underscore, or dash.";
@@ -28,20 +23,10 @@ function hintForError(message: string): string | undefined {
   return undefined;
 }
 
-async function currentOrThrow(config: AppConfig): Promise<string> {
-  const current = await readCurrentAccount(config);
-  if (!current) {
-    throw new Error("no current account");
-  }
-  return current;
-}
-
 async function printList(config: AppConfig): Promise<void> {
-  const current = await readCurrentAccount(config);
   const rows = [];
   for (const name of await listAccounts(config)) {
     rows.push({
-      marker: name === current ? ("*" as const) : ("-" as const),
       profile: name,
       identity: await readAccountLabel(config, name).catch(() => "unknown"),
     });
@@ -68,7 +53,10 @@ async function printStatus(config: AppConfig, target?: string, all = false): Pro
     return;
   }
 
-  const name = target || (await currentOrThrow(config));
+  if (!target) {
+    throw new Error("missing account name; use sacc status <name> or sacc status --all");
+  }
+  const name = target;
   console.log(formatStatus([await readRateLimits(config, name)]));
 }
 
@@ -77,7 +65,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   const program = new Command();
 
   program
-    .name("swa")
+    .name("sacc")
     .description("Codex account switcher")
     .helpOption("-h, --help", "show help")
     .showHelpAfterError(false)
@@ -88,16 +76,6 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
     process.exitCode = await loginCodex(config, name);
   });
 
-  program.command("use <name>").action(async (name: string) => {
-    await requireProfile(config, name);
-    await writeCurrentAccount(config, name);
-    console.log(name);
-  });
-
-  program.command("current").action(async () => {
-    console.log(await currentOrThrow(config));
-  });
-
   program.command("list").action(async () => printList(config));
 
   program
@@ -105,27 +83,6 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
     .option("--all", "show all accounts")
     .action(async (name: string | undefined, command: { all?: boolean }) => {
       await printStatus(config, name, Boolean(command.all));
-    });
-
-  program
-    .command("run")
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .argument("[args...]", "codex args")
-    .action(async (args: string[]) => {
-      process.exitCode = await runCodex(config, await currentOrThrow(config), args);
-    });
-
-  program
-    .command("resume <id> [args...]")
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .action(async (id: string, args: string[] = []) => {
-      process.exitCode = await runCodex(config, await currentOrThrow(config), [
-        "--resume",
-        id,
-        ...args,
-      ]);
     });
 
   program
@@ -140,7 +97,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
         return;
       }
       throw new Error(
-        "swa pick requires an interactive terminal; use swa <account> [codex args] in scripts",
+        "sacc pick requires an interactive terminal; use sacc <account> [codex args] in scripts",
       );
     });
 
@@ -151,7 +108,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.command("remove <name>").action(async (name: string) => {
     await requireProfile(config, name);
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error("swa remove requires an interactive terminal");
+      throw new Error("sacc remove requires an interactive terminal");
     }
     const { input } = await import("@inquirer/prompts");
     const answer = await input({ message: `Delete account profile "${name}"? Type ${name} to confirm` });

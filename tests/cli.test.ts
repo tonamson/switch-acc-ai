@@ -6,13 +6,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
 
 const repoRoot = process.cwd();
-const binPath = join(repoRoot, "dist", "bin", "swa.js");
+const binPath = join(repoRoot, "dist", "bin", "sacc.js");
 
 let root = "";
 let env: NodeJS.ProcessEnv;
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "swa-cli-"));
+  root = await mkdtemp(join(tmpdir(), "sacc-cli-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   env = {
@@ -37,11 +37,11 @@ function run(args: string[], input?: string): string {
   });
 }
 
-describe("swa cli", () => {
+describe("sacc cli", () => {
   it("prints help", () => {
     const output = run(["--help"]);
-    expect(output).toContain("SWA");
-    expect(output).toContain("swa pick [codex args]");
+    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("sacc pick [codex args]");
   });
 
   it("logs in and lists accounts", () => {
@@ -52,15 +52,10 @@ describe("swa cli", () => {
     expect(output).toContain("acc2@example.com");
   });
 
-  it("sets and prints current account", () => {
-    run(["use", "acc2"]);
-    expect(run(["current"]).trim()).toBe("acc2");
-  });
-
-  it("shows current status", () => {
-    const output = run(["status"]);
+  it("shows named account status", () => {
+    const output = run(["status", "acc2"]);
     expect(output).toContain("Status");
-    expect(output).toContain("acc2 current");
+    expect(output).toContain("acc2");
     expect(output).toContain("75% used");
   });
 
@@ -69,8 +64,8 @@ describe("swa cli", () => {
     expect((await readFile(env.CODEX_ARGS_LOG!, "utf8")).trim()).toBe("--model test-model");
   });
 
-  it("runs resume shortcut", async () => {
-    run(["resume", "session-123", "--model", "test-model"]);
+  it("forwards resume args through an explicit account", async () => {
+    run(["acc2", "--resume", "session-123", "--model", "test-model"]);
     expect((await readFile(env.CODEX_ARGS_LOG!, "utf8")).trim()).toBe(
       "--resume session-123 --model test-model",
     );
@@ -78,7 +73,7 @@ describe("swa cli", () => {
 
   it("prints help instead of opening menu when stdin is not interactive", () => {
     const output = run([]);
-    expect(output).toContain("SWA");
-    expect(output).toContain("swa <account> [codex args]");
+    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("sacc <account> [codex args]");
   });
 });
