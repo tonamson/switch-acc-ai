@@ -1,5 +1,5 @@
 import type { RateLimitStatus } from "../core/codex.js";
-import { brand, danger, heading, muted, warning } from "./theme.js";
+import { brand, command, danger, heading, muted, warning } from "./theme.js";
 
 export type AccountListRow = {
   marker: "*" | "-";
@@ -13,29 +13,56 @@ function statusTitle(row: RateLimitStatus): string {
   return row.current ? `${row.account} current` : row.account;
 }
 
+function title(section: string): string {
+  return `${brand("SWA")}  ${muted(section)}`;
+}
+
+function cmd(syntax: string, description: string): string {
+  return `  ${command(syntax.padEnd(28))}${muted(description)}`;
+}
+
+function usage(line: string): string {
+  return `  ${command(line)}`;
+}
+
+function currentMarker(value: string): string {
+  return value === "*" ? warning("*") : muted("-");
+}
+
+function percent(value: string): string {
+  const used = Number.parseFloat(value);
+  if (Number.isNaN(used)) return value;
+  if (used >= 85) return danger(value);
+  if (used >= 70) return warning(value);
+  return value;
+}
+
 export function formatHelp(): string {
   return [
     `${brand("SWA")}  ${muted("Codex account switcher")}`,
     "",
+    heading("Usage"),
+    usage("swa [command] [account] [codex args]"),
+    "",
     heading("Run"),
-    "  swa                         open menu",
-    "  swa <account> [codex args]   run Codex with account",
-    "  swa run [codex args]         run current account",
-    "  swa pick [codex args]        choose account then run",
-    "  swa resume <id> [args]       resume current account",
+    cmd("swa", "open menu"),
+    cmd("swa <account> [codex args]", "run Codex with account"),
+    cmd("swa run [codex args]", "run current account"),
+    cmd("swa pick [codex args]", "choose account then run"),
+    cmd("swa resume <id> [args]", "resume current account"),
     "",
     heading("Accounts"),
-    "  swa login <name>             login Codex OAuth into a profile",
-    "  swa use <name>               set current account",
-    "  swa current                  print current account",
-    "  swa list                     list accounts",
-    "  swa rename <old> <new>       rename an account",
-    "  swa remove <name>            delete an account profile",
+    cmd("swa login <name>", "login Codex OAuth into a profile"),
+    cmd("swa use <name>", "set current account"),
+    cmd("swa current", "print current account"),
+    cmd("swa list", "list accounts"),
+    cmd("swa rename <old> <new>", "rename an account"),
+    cmd("swa remove <name>", "delete an account profile"),
     "",
     heading("Status"),
-    "  swa status                   show current account limits",
-    "  swa status <name>            show one account limits",
-    "  swa status --all             show limits for all accounts",
+    cmd("swa status", "show current account limits"),
+    cmd("swa status <name>", "show one account limits"),
+    cmd("swa status --all", "show limits for all accounts"),
   ].join("\n");
 }
 
@@ -45,10 +72,23 @@ export function formatAccountsTable(rows: AccountListRow[]): string {
   const widths = headers.map((header, index) =>
     Math.max(header.length, ...tableRows.map((row) => String(row[index]).length)),
   );
-  const renderRow = (cells: string[]) =>
-    cells.map((cell, index) => String(cell).padEnd(widths[index])).join("  ");
+  const renderRow = (cells: string[], isHeader = false) =>
+    cells
+      .map((cell, index) => {
+        const value = String(cell).padEnd(widths[index]);
+        if (isHeader) return muted(value);
+        if (index === 0) return currentMarker(cell);
+        if (index === 1 && cells[0] === "*") return command(value);
+        return value;
+      })
+      .join("  ");
   const separator = widths.map((width) => "-".repeat(width)).join("  ");
-  const lines = [heading("Accounts"), renderRow(headers), separator, ...tableRows.map(renderRow)];
+  const lines = [
+    title("Accounts"),
+    `  ${renderRow(headers, true)}`,
+    `  ${muted(separator)}`,
+    ...tableRows.map((row) => `  ${renderRow(row)}`),
+  ];
 
   return lines.join("\n");
 }
@@ -56,26 +96,26 @@ export function formatAccountsTable(rows: AccountListRow[]): string {
 export function formatStatus(rows: StatusRenderRow[]): string {
   const blocks = rows.map((row) => {
     if ("error" in row) {
-      return [warning(row.account), `  error         ${row.error}`].join("\n");
+      return [`  ${warning(row.account)}`, `  ${muted("error".padEnd(13))}${row.error}`].join("\n");
     }
 
     const lines = [
-      heading(statusTitle(row)),
-      `  user          ${row.user}`,
-      `  plan          ${row.plan}`,
-      `  5h limit      ${row.primary.usedPercent} (${row.primary.resetLabel})`,
-      `  weekly limit  ${row.secondary.usedPercent} (${row.secondary.resetLabel})`,
-      `  reset credits ${row.resetCredits}`,
+      `  ${heading(statusTitle(row))}`,
+      `  ${muted("user".padEnd(13))}${row.user}`,
+      `  ${muted("plan".padEnd(13))}${row.plan}`,
+      `  ${muted("5h limit".padEnd(13))}${percent(row.primary.usedPercent)} ${muted(`(${row.primary.resetLabel})`)}`,
+      `  ${muted("weekly limit".padEnd(13))}${percent(row.secondary.usedPercent)} ${muted(`(${row.secondary.resetLabel})`)}`,
+      `  ${muted("reset credits".padEnd(13))}${row.resetCredits}`,
     ];
 
     if (row.reached) {
-      lines.push(`  limit reached ${row.reached}`);
+      lines.push(`  ${muted("limit reached".padEnd(13))}${warning(row.reached)}`);
     }
 
     return lines.join("\n");
   });
 
-  return `${heading("Status")}\n${blocks.join("\n\n")}`;
+  return `${title("Status")}\n${blocks.join("\n\n")}`;
 }
 
 export function formatError(message: string, hint?: string): string {

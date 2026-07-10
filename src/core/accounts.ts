@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   readdir,
+  readlink,
   readFile,
   rename,
   rm,
@@ -126,8 +127,17 @@ export async function linkSharedProfile(config: AppConfig, profilePath: string):
   for (const assetName of sharedAssetNames) {
     const source = join(config.sharedHome, assetName);
     const target = join(profilePath, basename(assetName));
-    if (!(await pathExistsOrSymlink(source)) || (await pathExistsOrSymlink(target))) {
+    if (!(await pathExistsOrSymlink(source))) {
       continue;
+    }
+
+    try {
+      if ((await lstat(target)).isSymbolicLink() && (await readlink(target)) === source) {
+        continue;
+      }
+      await rm(target, { recursive: true, force: true });
+    } catch {
+      // Target does not exist, which is the normal path.
     }
     await symlink(source, target);
   }

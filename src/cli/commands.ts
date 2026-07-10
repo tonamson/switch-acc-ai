@@ -80,9 +80,9 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
     .name("swa")
     .description("Codex account switcher")
     .helpOption("-h, --help", "show help")
-    .addHelpText("beforeAll", formatHelp())
     .showHelpAfterError(false)
     .exitOverride();
+  program.helpInformation = () => `${formatHelp()}\n`;
 
   program.command("login <name>").action(async (name: string) => {
     process.exitCode = await loginCodex(config, name);
@@ -193,6 +193,9 @@ export async function runProgram(argv: string[] = process.argv): Promise<void> {
   try {
     await program.parseAsync(argv);
   } catch (error) {
+    if (error instanceof Error && error.name === "ExitPromptError") {
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("(outputHelp)")) {
       return;

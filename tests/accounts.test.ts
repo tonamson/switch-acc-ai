@@ -116,6 +116,21 @@ describe("account filesystem operations", () => {
     expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
   });
 
+  it("replaces local shared assets with symlinks", async () => {
+    const config = await testConfig();
+    const profile = await ensureProfile(config, "acc2");
+    await mkdir(config.sharedHome, { recursive: true });
+    await mkdir(join(config.sharedHome, "skills"));
+    await writeFile(join(config.sharedHome, "config.toml"), "model = \"gpt-5\"\n");
+    await mkdir(join(profile, "skills"));
+    await writeFile(join(profile, "config.toml"), "model = \"gpt-4\"\n");
+
+    await linkSharedProfile(config, profile);
+
+    expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
+  });
+
   it("links broken shared symlinks into the profile", async () => {
     const config = await testConfig();
     const profile = await ensureProfile(config, "acc2");
