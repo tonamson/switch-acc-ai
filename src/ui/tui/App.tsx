@@ -363,10 +363,6 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
   };
 
   return <Box flexDirection="column" width={layoutWidth} marginLeft={leftMargin} paddingX={2} paddingY={1}>
-    <Box justifyContent="space-between" marginBottom={1}>
-      <Text bold color="green">Switch Account AI</Text>
-      <Text color="gray">{provider ? 'Codex' : `${accountNames.length} Codex profiles`}</Text>
-    </Box>
     <Box flexDirection="row" minHeight={14}>
       <Box width={25} flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginRight={1}>
         <Text color="gray">MENU</Text>

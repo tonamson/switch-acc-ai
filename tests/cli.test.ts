@@ -40,7 +40,7 @@ function run(args: string[], input?: string): string {
 describe("sacc cli", () => {
   it("prints help", () => {
     const output = run(["--help"]);
-    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("Usage");
     expect(output).toContain("sacc pick [codex args]");
   });
 
@@ -73,7 +73,7 @@ describe("sacc cli", () => {
 
   it("prints help instead of opening menu when stdin is not interactive", () => {
     const output = run([]);
-    expect(output).toContain("Switch Account AI");
+    expect(output).toContain("Usage");
     expect(output).toContain("sacc <account> [codex args]");
   });
 });

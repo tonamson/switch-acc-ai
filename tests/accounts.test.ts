@@ -22,18 +22,19 @@ async function testConfig(): Promise<AppConfig> {
 }
 
 describe("account name validation", () => {
-  it("accepts letters numbers dots underscores and dashes", () => {
+  it("accepts non-empty account names", () => {
     expect(isValidAccountName("acc1")).toBe(true);
     expect(isValidAccountName("main.profile_2")).toBe(true);
     expect(isValidAccountName("work-prod")).toBe(true);
+    expect(isValidAccountName("flutter.steals6z+roru1l39qx20ws47d@icloud.com")).toBe(true);
   });
 
   it("rejects unsafe names", () => {
     expect(isValidAccountName("")).toBe(false);
+    expect(isValidAccountName("   ")).toBe(false);
     expect(isValidAccountName(".")).toBe(false);
     expect(isValidAccountName("..")).toBe(false);
     expect(isValidAccountName("../acc")).toBe(false);
-    expect(isValidAccountName("has space")).toBe(false);
   });
 });
 

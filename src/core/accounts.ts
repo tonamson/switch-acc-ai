@@ -16,7 +16,7 @@ import type { AppConfig } from "./config.js";
 const sharedAssetNames = ["skills", "plugins", "sessions", "config.toml"] as const;
 
 export function isValidAccountName(name: string): boolean {
-  return /^[A-Za-z0-9._-]+$/.test(name) && name !== "." && name !== "..";
+  return name.trim() !== "" && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\0");
 }
 
 export function ensureValidAccountName(name: string): void {

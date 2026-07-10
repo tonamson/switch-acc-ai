@@ -30,8 +30,6 @@ function percent(value: string): string {
 
 export function formatHelp(): string {
   return [
-    brand("Switch Account AI"),
-    "",
     heading("Usage"),
     usage("sacc [command] [account] [codex args]"),
     "",

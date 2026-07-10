@@ -18,7 +18,7 @@ function hintForError(message: string): string | undefined {
     return "Run sacc login <name> to create it, or sacc list to see profiles.";
   }
   if (message.startsWith("invalid account name:")) {
-    return "Use letters, numbers, dot, underscore, or dash.";
+    return "Use any non-empty name.";
   }
   return undefined;
 }

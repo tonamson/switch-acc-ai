@@ -10,7 +10,6 @@ describe("output formatting", () => {
   it("formats help with sacc command sections", () => {
     const output = formatHelp();
 
-    expect(output).toContain("Switch Account AI");
     expect(output).toContain("Run");
     expect(output).toContain("sacc pick [codex args]");
     expect(output).toContain("Accounts");
