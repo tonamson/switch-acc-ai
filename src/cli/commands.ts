@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { Command } from "commander";
 import {
   listAccounts,
@@ -77,6 +78,16 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   });
 
   program.command("list").action(async () => printList(config));
+
+  program.command("update").action(() => {
+    const result = spawnSync("npm", ["install", "-g", "switch-acc-ai@latest"], {
+      stdio: "inherit",
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    process.exitCode = result.status ?? 1;
+  });
 
   program
     .command("status [name]")

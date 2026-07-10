@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -15,6 +15,13 @@ beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "sacc-cli-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
+  await writeFile(
+    join(binDir, "npm"),
+    `#!/usr/bin/env bash
+printf '%s\\n' "$*" > "$NPM_ARGS_LOG"
+`,
+    { mode: 0o755 },
+  );
   env = {
     ...process.env,
     PATH: `${binDir}:${process.env.PATH || ""}`,
@@ -23,6 +30,7 @@ beforeAll(async () => {
     CODEX_ACCOUNT_LOG: join(root, "account.log"),
     CODEX_ARGS_LOG: join(root, "args.log"),
     CODEX_LOGIN_LOG: join(root, "login.log"),
+    NPM_ARGS_LOG: join(root, "npm.log"),
     NO_COLOR: "1",
   };
   await mkdir(env.CODEX_SHARED_HOME!, { recursive: true });
@@ -42,6 +50,7 @@ describe("sacc cli", () => {
     const output = run(["--help"]);
     expect(output).toContain("Usage");
     expect(output).toContain("sacc pick [codex args]");
+    expect(output).toContain("sacc update");
   });
 
   it("logs in and lists accounts", () => {
@@ -75,5 +84,12 @@ describe("sacc cli", () => {
     const output = run([]);
     expect(output).toContain("Usage");
     expect(output).toContain("sacc <account> [codex args]");
+  });
+
+  it("updates the global package from npm", async () => {
+    run(["update"]);
+    expect((await readFile(env.NPM_ARGS_LOG!, "utf8")).trim()).toBe(
+      "install -g switch-acc-ai@latest",
+    );
   });
 });
