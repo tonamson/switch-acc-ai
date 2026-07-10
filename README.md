@@ -1,8 +1,22 @@
 # switch-acc-ai
 
-`switch-acc-ai` provides the `sacc` command for running Codex with isolated `CODEX_HOME` account profiles.
+Switch between multiple Codex accounts without repeatedly logging in and out.
 
-Each account profile is stored separately, while shared Codex assets can still be linked from your main Codex home.
+`switch-acc-ai` provides the `sacc` CLI, which runs Codex with an isolated
+`CODEX_HOME` for each account. Authentication and account-specific state stay
+separate, while common assets such as skills, plugins, sessions, and
+configuration can still be shared from your main Codex home.
+
+Use it to:
+
+- Keep personal, work, and other Codex accounts separate.
+- Launch Codex with a named account in one command.
+- View account status and choose an account interactively.
+- Rename or remove local account profiles.
+- Continue using the standard `codex login` OAuth flow.
+
+`switch-acc-ai` does not modify Codex authentication. It only manages which
+profile directory Codex uses.
 
 ## Install
 
