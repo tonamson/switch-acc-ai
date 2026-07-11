@@ -6,12 +6,6 @@ import type { AppConfig } from '../../core/config.js';
 import type { RateLimitStatus } from '../../core/codex.js';
 
 export type Action =
-  | 'run'
-  | 'login'
-  | 'list'
-  | 'status'
-  | 'rename'
-  | 'remove'
   | 'exit'
   | { type: 'run'; account: string }
   | { type: 'login'; name: string }

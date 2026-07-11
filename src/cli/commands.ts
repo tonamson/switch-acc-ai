@@ -82,6 +82,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.command("update").action(() => {
     const result = spawnSync("npm", ["install", "-g", "switch-acc-ai@latest"], {
       stdio: "inherit",
+      shell: true,
     });
     if (result.error) {
       throw result.error;

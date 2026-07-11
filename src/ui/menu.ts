@@ -1,12 +1,7 @@
-import { input, select } from "@inquirer/prompts";
-import {
-  listAccounts,
-  removeAccount,
-  renameAccount,
-} from "../core/accounts.js";
-import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../core/codex.js";
+import { select } from "@inquirer/prompts";
+import { listAccounts, removeAccount, renameAccount } from "../core/accounts.js";
+import { loginCodex, runCodex } from "../core/codex.js";
 import type { AppConfig } from "../core/config.js";
-import { formatAccountsTable, formatStatus } from "./output.js";
 
 function resumePromptInput(): void {
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
@@ -31,22 +26,6 @@ async function chooseAccount(config: AppConfig): Promise<string> {
       value: name,
     })),
   });
-}
-
-async function printAccounts(config: AppConfig): Promise<void> {
-  const rows = [];
-  for (const name of await listAccounts(config)) {
-    rows.push({
-      profile: name,
-      identity: await readAccountLabel(config, name).catch(() => "unknown"),
-    });
-  }
-  console.log(formatAccountsTable(rows));
-}
-
-async function pause(): Promise<void> {
-  resumePromptInput();
-  await input({ message: "Enter to return" });
 }
 
 export async function pickAndRunAccount(
@@ -83,38 +62,5 @@ export async function openMainMenu(
       continue;
     }
     if (action === "exit") return;
-    
-    if (action === "login") {
-      resumePromptInput();
-      const name = (await input({ message: "Account profile name" })).trim();
-      if (!name) {
-        await pause();
-        continue;
-      }
-      process.exitCode = await loginCodex(config, name);
-      await pause();
-    }
-    if (action === "rename") {
-      const oldName = await chooseAccount(config);
-      resumePromptInput();
-      const newName = (await input({ message: "New profile name" })).trim();
-      if (!newName) {
-        await pause();
-        continue;
-      }
-      await renameAccount(config, oldName, newName);
-      await pause();
-    }
-    if (action === "remove") {
-      const name = await chooseAccount(config);
-      resumePromptInput();
-      const answer = await input({
-        message: `Delete account profile "${name}"? Type ${name} to confirm`,
-      });
-      if (answer === name) {
-        await removeAccount(config, name);
-      }
-      await pause();
-    }
   }
 }

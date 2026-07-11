@@ -68,10 +68,14 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
   const rl = createInterface({ input: child.stdout });
   const targetId = includeLimits ? 3 : 2;
   let sawTargetResponse = false;
+  let spawnError: Error | null = null;
   const timeout = setTimeout(() => {
     child.kill("SIGTERM");
   }, 15_000);
   const closePromise = once(child, "close");
+  child.on("error", (err: Error) => {
+    spawnError = err;
+  });
 
   const reader = (async () => {
     for await (const line of rl) {
@@ -101,6 +105,10 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
   await closePromise;
   clearTimeout(timeout);
 
+  const error = spawnError as Error | null;
+  if (error) {
+    throw new Error(`failed to launch codex: ${error.message}. Is the codex CLI installed and on PATH?`);
+  }
   if (!sawTargetResponse) {
     throw new Error("no response from codex app-server");
   }
