@@ -1,46 +1,74 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
 import { listAccounts } from '../../core/accounts.js';
-import { readAccountLabel, readRateLimits } from '../../core/codex.js';
-import type { AppConfig } from '../../core/config.js';
-import type { RateLimitStatus } from '../../core/codex.js';
+import { readAccountLabel as readCodexLabel, readRateLimits } from '../../core/codex.js';
+import { getProvider, type AppConfig, type ProviderId } from '../../core/config.js';
+import {
+  readAccountLabel as readGrokLabel,
+  readAuthStatus,
+} from '../../core/grok.js';
+import { formatMetric, type UsageStatus } from '../../core/usage.js';
 
 export type Action =
   | 'exit'
-  | { type: 'run'; account: string }
-  | { type: 'login'; name: string }
-  | { type: 'rename'; account: string; newName: string }
-  | { type: 'remove'; account: string };
+  | { type: 'run'; provider: ProviderId; account: string }
+  | { type: 'login'; provider: ProviderId; name: string }
+  | { type: 'rename'; provider: ProviderId; account: string; newName: string }
+  | { type: 'remove'; provider: ProviderId; account: string };
 type MenuAction = 'run' | 'login' | 'list' | 'status' | 'rename' | 'remove' | 'exit';
 
 type DetailView = 'overview' | 'list' | 'status' | 'run' | 'accountAction' | 'loginName' | 'renameName' | 'removeConfirm';
-type ProviderId = 'codex' | 'claude' | 'more';
 type AccountInfo = { name: string; label: string };
-type StatusInfo = RateLimitStatus | { account: string; error: string };
+type StatusInfo = UsageStatus | { account: string; error: string };
 
 const PROVIDERS: { id: ProviderId; name: string; hint: string; enabled: boolean }[] = [
-  { id: 'codex', name: 'Codex', hint: 'OpenAI CLI profiles', enabled: true },
-  { id: 'claude', name: 'Claude', hint: 'Coming soon', enabled: false },
-  { id: 'more', name: 'More', hint: 'Add another provider later', enabled: false },
+  { id: 'codex', name: 'Codex', hint: 'OpenAI Codex CLI profiles', enabled: true },
+  { id: 'grok', name: 'Grok', hint: 'xAI Grok CLI profiles', enabled: true },
 ];
 
-const MENU_ITEMS: { label: string; hint: string; value: MenuAction }[] = [
-  { label: 'Run Codex', hint: 'Launch with a profile', value: 'run' },
-  { label: 'Add account', hint: 'Sign in to a new profile', value: 'login' },
-  { label: 'Accounts', hint: 'View saved profiles', value: 'list' },
-  { label: 'Usage', hint: 'Check limits and resets', value: 'status' },
-  { label: 'Rename', hint: 'Change a profile name', value: 'rename' },
-  { label: 'Remove', hint: 'Delete a profile', value: 'remove' },
-  { label: 'Back', hint: 'Choose another provider', value: 'exit' },
-  { label: 'Exit', hint: 'Close switcher', value: 'exit' },
-];
+function menuItems(provider: ProviderId): { label: string; hint: string; value: MenuAction }[] {
+  const runLabel = provider === 'codex' ? 'Run Codex' : 'Run Grok';
+  return [
+    { label: runLabel, hint: 'Launch with a profile', value: 'run' },
+    { label: 'Add account', hint: 'Sign in to a new profile', value: 'login' },
+    { label: 'Accounts', hint: 'View saved profiles', value: 'list' },
+    { label: 'Usage', hint: '5h / weekly / monthly limits', value: 'status' },
+    { label: 'Rename', hint: 'Change a profile name', value: 'rename' },
+    { label: 'Remove', hint: 'Delete a profile', value: 'remove' },
+    { label: 'Back', hint: 'Choose another provider', value: 'exit' },
+    { label: 'Exit', hint: 'Close switcher', value: 'exit' },
+  ];
+}
 
 function usageColor(value: string): 'green' | 'yellow' | 'red' | undefined {
+  if (value === '-') return undefined;
   const used = Number.parseFloat(value);
   if (Number.isNaN(used)) return undefined;
   if (used >= 85) return 'red';
   if (used >= 70) return 'yellow';
   return 'green';
+}
+
+function MetricLine({ label, line }: { label: string; line: string }) {
+  const usedMatch = line.match(/(\d+(?:\.\d+)?% used)/);
+  if (line === '-' || !usedMatch) {
+    return (
+      <Text>
+        <Text color="gray">{label.padEnd(9)}</Text>
+        <Text color={line === '-' ? 'gray' : undefined}>{line}</Text>
+      </Text>
+    );
+  }
+  const used = usedMatch[1];
+  const [before, after] = line.split(used);
+  return (
+    <Text>
+      <Text color="gray">{label.padEnd(9)}</Text>
+      {before}
+      <Text color={usageColor(used)}>{used}</Text>
+      {after}
+    </Text>
+  );
 }
 
 function Key({ children }: { children: string }) {
@@ -49,7 +77,7 @@ function Key({ children }: { children: string }) {
 
 function detailTitle(detailView: DetailView, selectedLabel: string, accountAction: 'rename' | 'remove'): string {
   if (detailView === 'overview') return selectedLabel;
-  if (detailView === 'run') return 'RUN CODEX';
+  if (detailView === 'run') return 'RUN';
   if (detailView === 'accountAction') return accountAction.toUpperCase();
   if (detailView === 'loginName') return 'ADD ACCOUNT';
   if (detailView === 'renameName') return 'RENAME';
@@ -57,12 +85,24 @@ function detailTitle(detailView: DetailView, selectedLabel: string, accountActio
   return detailView.toUpperCase();
 }
 
-export function App({ config, onAction }: { config: AppConfig; onAction: (action: Action) => void }) {
+export function App({
+  config,
+  initialProvider = null,
+  onAction,
+}: {
+  config: AppConfig;
+  initialProvider?: ProviderId | null;
+  onAction: (action: Action) => void;
+}) {
   const { exit } = useApp();
   const { columns } = useWindowSize();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [providerIndex, setProviderIndex] = useState(0);
-  const [provider, setProvider] = useState<ProviderId | null>(null);
+  const [providerIndex, setProviderIndex] = useState(() => {
+    if (!initialProvider) return 0;
+    const index = PROVIDERS.findIndex((item) => item.id === initialProvider);
+    return index >= 0 ? index : 0;
+  });
+  const [provider, setProvider] = useState<ProviderId | null>(initialProvider);
   const [accountNames, setAccountNames] = useState<string[]>([]);
   const [detailView, setDetailView] = useState<DetailView>('overview');
   const [accountsInfo, setAccountsInfo] = useState<AccountInfo[]>([]);
@@ -73,26 +113,45 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
   const [textInput, setTextInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [codexCount, setCodexCount] = useState(0);
+  const [grokCount, setGrokCount] = useState(0);
   const finish = (action: Action) => {
     onAction(action);
     exit();
   };
 
-  const refreshAccounts = async () => {
-    const names = await listAccounts(config);
+  const activeProvider = provider ?? 'codex';
+  const items = menuItems(activeProvider);
+
+  const refreshAccounts = async (id: ProviderId = activeProvider) => {
+    const names = await listAccounts(getProvider(config, id));
     setAccountNames(names);
     return names;
   };
 
+  const refreshDashboardCounts = async () => {
+    const [codexNames, grokNames] = await Promise.all([
+      listAccounts(config.codex),
+      listAccounts(config.grok),
+    ]);
+    setCodexCount(codexNames.length);
+    setGrokCount(grokNames.length);
+  };
+
   useEffect(() => {
-    refreshAccounts().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, [config]);
+    refreshDashboardCounts().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+    if (provider) {
+      refreshAccounts(provider).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+    }
+  }, [config, provider]);
 
   const loadList = async () => {
     const names = await refreshAccounts();
     const infos = await Promise.all(names.map(async (name) => ({
       name,
-      label: await readAccountLabel(config, name).catch(() => 'Not signed in'),
+      label: activeProvider === 'codex'
+        ? await readCodexLabel(config.codex, name).catch(() => 'Not signed in')
+        : await readGrokLabel(config.grok, name).catch(() => 'Not signed in'),
     })));
     setAccountsInfo(infos);
     setDetailView('list');
@@ -101,7 +160,10 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
   const loadStatus = async () => {
     const names = await refreshAccounts();
     const stats = await Promise.all(names.map((name) =>
-      readRateLimits(config, name).catch((err: unknown) => ({
+      (activeProvider === 'codex'
+        ? readRateLimits(config.codex, name)
+        : readAuthStatus(config.grok, name)
+      ).catch((err: unknown) => ({
         account: name,
         error: err instanceof Error ? err.message : String(err),
       })),
@@ -130,7 +192,7 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
       if (key.escape) {
         setDetailView('overview');
       } else if (key.return) {
-        finish({ type: 'remove', account: selectedAccount });
+        finish({ type: 'remove', provider: activeProvider, account: selectedAccount });
       }
       return;
     }
@@ -143,9 +205,9 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
       } else if (key.return) {
         const value = textInput.trim();
         if (detailView === 'loginName' && value) {
-          finish({ type: 'login', name: value });
+          finish({ type: 'login', provider: activeProvider, name: value });
         } else if (detailView === 'renameName' && value) {
-          finish({ type: 'rename', account: selectedAccount, newName: value });
+          finish({ type: 'rename', provider: activeProvider, account: selectedAccount, newName: value });
         }
       } else if (input) {
         setTextInput((value) => value + input);
@@ -192,7 +254,7 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
       setSelectedIndex((index) => Math.max(0, index - 1));
       setDetailView('overview');
     } else if (key.downArrow) {
-      setSelectedIndex((index) => Math.min(MENU_ITEMS.length - 1, index + 1));
+      setSelectedIndex((index) => Math.min(items.length - 1, index + 1));
       setDetailView('overview');
     } else if (input === 'r') {
       if (detailView === 'status') await runDetailAction('status');
@@ -210,11 +272,11 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
       }
     }
     else if (key.return) {
-      const action = MENU_ITEMS[selectedIndex].value;
+      const action = items[selectedIndex].value;
       if (detailView === 'run') {
         const account = accountNames[statusIndex];
         if (account) {
-          finish({ type: 'run', account });
+          finish({ type: 'run', provider: activeProvider, account });
         }
       } else if (detailView === 'accountAction') {
         const account = accountNames[statusIndex];
@@ -235,10 +297,11 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
           setDetailView('run');
         }
       } else if (action === 'exit') {
-        if (MENU_ITEMS[selectedIndex].label === 'Back') {
+        if (items[selectedIndex].label === 'Back') {
           setProvider(null);
           setDetailView('overview');
           setError(null);
+          refreshDashboardCounts().catch(() => undefined);
         } else {
           finish(action);
         }
@@ -262,16 +325,19 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
         setProvider(null);
         setDetailView('overview');
         setError(null);
+        refreshDashboardCounts().catch(() => undefined);
       } else {
         finish('exit');
       }
     }
   });
 
-  const selected = MENU_ITEMS[selectedIndex];
+  const selected = items[selectedIndex];
   const selectedProvider = PROVIDERS[providerIndex];
   const layoutWidth = Math.max(60, Math.min(columns - 4, 110));
   const leftMargin = Math.max(0, Math.floor((columns - layoutWidth) / 2));
+  const providerTitle = PROVIDERS.find((item) => item.id === provider)?.name ?? 'Provider';
+
   const renderBody = () => {
     if (loading) return <Text color="cyan">Refreshing account data...</Text>;
     if (error) return <Text color="red">Could not load data: {error}</Text>;
@@ -281,8 +347,8 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
           <Text bold color="white">Provider dashboard</Text>
           <Text color="gray">Choose the AI CLI you want to manage.</Text>
           <Box marginTop={2} flexDirection="column">
-            <Text><Text color="gray">Codex profiles  </Text>{accountNames.length}</Text>
-            <Text><Text color="gray">Claude         </Text>not connected</Text>
+            <Text><Text color="gray">Codex profiles  </Text>{codexCount}</Text>
+            <Text><Text color="gray">Grok profiles   </Text>{grokCount}</Text>
           </Box>
         </Box>
       );
@@ -290,10 +356,10 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
     if (detailView === 'overview') {
       return (
         <Box flexDirection="column">
-          <Text bold color="white">Codex workspace</Text>
+          <Text bold color="white">{providerTitle} workspace</Text>
           <Text color="gray">Choose an account action from the menu.</Text>
           <Box marginTop={2} flexDirection="column">
-            <Text><Text color="gray">Saved profiles  </Text>{accountsInfo.length || 'Run Accounts to load'}</Text>
+            <Text><Text color="gray">Saved profiles  </Text>{accountNames.length || accountsInfo.length || 0}</Text>
           </Box>
         </Box>
       );
@@ -343,17 +409,36 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
     }
     if (!statusInfo.length) return <Text color="yellow">No profiles yet. Choose Add account to sign in.</Text>;
     const stat = statusInfo[statusIndex];
-    if ('error' in stat) return <Box flexDirection="column"><Text bold color="red">Usage unavailable</Text><Text color="gray">{stat.account}</Text><Text color="red">{stat.error}</Text></Box>;
-    return <Box flexDirection="column">
-      <Box justifyContent="space-between"><Text bold>{stat.account}</Text><Text color="gray">{statusIndex + 1}/{statusInfo.length}</Text></Box>
-      <Text color="gray">{stat.user}  {stat.plan}</Text>
-      <Box marginTop={1} flexDirection="column">
-        <Text><Text color="gray">5 hour   </Text><Text color={usageColor(stat.primary.usedPercent)}>{stat.primary.usedPercent}</Text><Text color="gray">  {stat.primary.resetLabel}</Text></Text>
-        <Text><Text color="gray">Weekly   </Text><Text color={usageColor(stat.secondary.usedPercent)}>{stat.secondary.usedPercent}</Text><Text color="gray">  {stat.secondary.resetLabel}</Text></Text>
-        <Text><Text color="gray">Credits  </Text>{stat.resetCredits}</Text>
-        {stat.reached && <Text color="yellow">Limit reached: {stat.reached}</Text>}
+    if ('error' in stat) {
+      return (
+        <Box flexDirection="column">
+          <Text bold color="red">Usage unavailable</Text>
+          <Text color="gray">{stat.account}</Text>
+          <Text color="red">{stat.error}</Text>
+        </Box>
+      );
+    }
+    // Unified layout for every provider: 5h / weekly / monthly (missing → "-")
+    return (
+      <Box flexDirection="column">
+        <Box justifyContent="space-between">
+          <Text bold>{stat.account}</Text>
+          <Text color="gray">{statusIndex + 1}/{statusInfo.length}</Text>
+        </Box>
+        <Text color="gray">{stat.user}  {stat.plan}</Text>
+        <Box marginTop={1} flexDirection="column">
+          <MetricLine label="5h" line={formatMetric(stat.fiveHour)} />
+          <MetricLine label="weekly" line={formatMetric(stat.weekly)} />
+          <MetricLine label="monthly" line={formatMetric(stat.monthly)} />
+          <Text>
+            <Text color="gray">{'credits'.padEnd(9)}</Text>
+            {stat.credits ?? '-'}
+          </Text>
+          {stat.reached && <Text color="yellow">Limit reached: {stat.reached}</Text>}
+          {stat.note && <Text color="gray">note  {stat.note}</Text>}
+        </Box>
       </Box>
-    </Box>;
+    );
   };
 
   return <Box flexDirection="column" width={layoutWidth} marginLeft={leftMargin} paddingX={2} paddingY={1}>
@@ -365,7 +450,7 @@ export function App({ config, onAction }: { config: AppConfig; onAction: (action
             ? PROVIDERS.map((item, index) => <Text key={item.id} color={providerIndex === index ? 'cyan' : item.enabled ? undefined : 'gray'} bold={providerIndex === index}>
               {providerIndex === index ? '> ' : '  '}{item.name}<Text color="gray">  {item.enabled ? '' : 'soon'}</Text>
             </Text>)
-            : MENU_ITEMS.map((item, index) => <Text key={`${item.label}-${item.value}`} color={selectedIndex === index ? 'cyan' : undefined} bold={selectedIndex === index}>
+            : items.map((item, index) => <Text key={`${item.label}-${item.value}`} color={selectedIndex === index ? 'cyan' : undefined} bold={selectedIndex === index}>
               {selectedIndex === index ? '> ' : '  '}{item.label}
             </Text>)}
         </Box>

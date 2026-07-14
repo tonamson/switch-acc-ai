@@ -11,9 +11,9 @@ import {
   renameAccount,
   requireProfile,
 } from "../src/core/accounts.js";
-import type { AppConfig } from "../src/core/config.js";
+import type { ProviderConfig } from "../src/core/config.js";
 
-async function testConfig(): Promise<AppConfig> {
+async function testConfig(): Promise<ProviderConfig> {
   const root = await mkdtemp(join(tmpdir(), "sacc-accounts-"));
   return {
     accountsDir: join(root, "accounts"),
@@ -109,6 +109,19 @@ describe("account filesystem operations", () => {
 
     expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
+  });
+
+  it("links grok shared assets including agents", async () => {
+    const config = await testConfig();
+    const profile = await ensureProfile(config, "work");
+    await mkdir(config.sharedHome, { recursive: true });
+    await mkdir(join(config.sharedHome, "agents"));
+    await mkdir(join(config.sharedHome, "skills"));
+
+    await linkSharedProfile(config, profile, "grok");
+
+    expect((await lstat(join(profile, "agents"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
   });
 
   it("replaces local shared assets with symlinks", async () => {

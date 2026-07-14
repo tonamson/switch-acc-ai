@@ -2,22 +2,16 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { ensureProfile, linkSharedProfile, requireProfile } from "./accounts.js";
-import type { AppConfig } from "./config.js";
+import type { ProviderConfig } from "./config.js";
+import {
+  ABSENT,
+  emptyUsageStatus,
+  metricFromPercentWindow,
+  type UsageStatus,
+} from "./usage.js";
 
-export type RateWindow = {
-  usedPercent: string;
-  resetLabel: string;
-};
-
-export type RateLimitStatus = {
-  account: string;
-  user: string;
-  plan: string;
-  primary: RateWindow;
-  secondary: RateWindow;
-  resetCredits: string;
-  reached?: string;
-};
+/** @deprecated Use UsageStatus from core/usage.js */
+export type RateLimitStatus = UsageStatus;
 
 type JsonRpcMessage = {
   id?: number;
@@ -29,15 +23,10 @@ function codexEnv(profilePath: string): NodeJS.ProcessEnv {
   return { ...process.env, CODEX_HOME: profilePath };
 }
 
-function usedPercent(window: Record<string, unknown> | undefined): string {
-  const value = window?.usedPercent;
-  return typeof value === "number" ? `${value}% used` : "unknown";
-}
-
-function resetLabel(window: Record<string, unknown> | undefined): string {
+function resetLabel(window: Record<string, unknown> | undefined): string | undefined {
   const value = window?.resetsAt;
   if (typeof value !== "number") {
-    return "unknown reset";
+    return undefined;
   }
   const resetAt = new Date(value * 1000);
   const year = String(resetAt.getFullYear()).padStart(4, "0");
@@ -52,6 +41,11 @@ function resetLabel(window: Record<string, unknown> | undefined): string {
   const timeZone =
     timeZoneParts.find((part) => part.type === "timeZoneName")?.value ?? "UTC";
   return `resets ${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${timeZone}`;
+}
+
+function windowUsedPercent(window: Record<string, unknown> | undefined): number | undefined {
+  const value = window?.usedPercent;
+  return typeof value === "number" ? value : undefined;
 }
 
 function getRecord(value: unknown): Record<string, unknown> {
@@ -115,7 +109,7 @@ async function appServerExchange(profilePath: string, includeLimits: boolean): P
   return responses;
 }
 
-export async function readAccountLabel(config: AppConfig, name: string): Promise<string> {
+export async function readAccountLabel(config: ProviderConfig, name: string): Promise<string> {
   const profilePath = await requireProfile(config, name);
   const responses = await appServerExchange(profilePath, false);
   const message = responses.get(2);
@@ -127,7 +121,7 @@ export async function readAccountLabel(config: AppConfig, name: string): Promise
   return String(account.email || account.username || account.accountId || name);
 }
 
-export async function readRateLimits(config: AppConfig, name: string): Promise<RateLimitStatus> {
+export async function readRateLimits(config: ProviderConfig, name: string): Promise<UsageStatus> {
   const profilePath = await requireProfile(config, name);
   const responses = await appServerExchange(profilePath, true);
   const accountMessage = responses.get(2);
@@ -150,21 +144,27 @@ export async function readRateLimits(config: AppConfig, name: string): Promise<R
   const secondary = getRecord(selectedRateLimits.secondary);
   const credits = getRecord(limitResult.rateLimitResetCredits);
   const legacyCredits = getRecord(legacyRateLimits.credits);
-  const resetCredits =
-    credits.availableCount ?? legacyCredits.balance ?? "unknown";
+  const resetCredits = credits.availableCount ?? legacyCredits.balance;
+  const creditsLabel =
+    typeof resetCredits === "number" || typeof resetCredits === "string"
+      ? String(resetCredits)
+      : null;
 
-  return {
-    account: name,
+  return emptyUsageStatus(name, {
     user: String(account.email || account.username || account.accountId || "unknown"),
     plan: String(account.planType || selectedRateLimits.planType || "unknown"),
-    primary: { usedPercent: usedPercent(primary), resetLabel: resetLabel(primary) },
-    secondary: { usedPercent: usedPercent(secondary), resetLabel: resetLabel(secondary) },
-    resetCredits: String(resetCredits),
+    // Codex primary ≈ 5h rolling window
+    fiveHour: metricFromPercentWindow(windowUsedPercent(primary), resetLabel(primary)),
+    // Codex secondary ≈ weekly window
+    weekly: metricFromPercentWindow(windowUsedPercent(secondary), resetLabel(secondary)),
+    // Codex has no monthly billing window in app-server
+    monthly: { ...ABSENT },
+    credits: creditsLabel,
     reached:
       typeof selectedRateLimits.rateLimitReachedType === "string"
         ? selectedRateLimits.rateLimitReachedType
         : undefined,
-  };
+  });
 }
 
 function waitForExit(child: ReturnType<typeof spawn>): Promise<number> {
@@ -184,9 +184,9 @@ function restoreTerminal(): void {
   }
 }
 
-export async function runCodex(config: AppConfig, name: string, args: string[]): Promise<number> {
+export async function runCodex(config: ProviderConfig, name: string, args: string[]): Promise<number> {
   const profilePath = await requireProfile(config, name);
-  await linkSharedProfile(config, profilePath);
+  await linkSharedProfile(config, profilePath, "codex");
   restoreTerminal();
   const child = spawn("codex", args, {
     env: codexEnv(profilePath),
@@ -195,9 +195,9 @@ export async function runCodex(config: AppConfig, name: string, args: string[]):
   return waitForExit(child);
 }
 
-export async function loginCodex(config: AppConfig, name: string): Promise<number> {
+export async function loginCodex(config: ProviderConfig, name: string): Promise<number> {
   const profilePath = await ensureProfile(config, name);
-  await linkSharedProfile(config, profilePath);
+  await linkSharedProfile(config, profilePath, "codex");
   restoreTerminal();
   const child = spawn("codex", ["login"], {
     env: codexEnv(profilePath),

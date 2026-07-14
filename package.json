@@ -1,7 +1,7 @@
 {
   "name": "switch-acc-ai",
   "version": "0.1.2",
-  "description": "Switch Codex accounts and run Codex with isolated CODEX_HOME profiles.",
+  "description": "Switch Codex and Grok accounts with isolated CLI home profiles.",
   "type": "module",
   "bin": {
     "sacc": "dist/bin/sacc.js"

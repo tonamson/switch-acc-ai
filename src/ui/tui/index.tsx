@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from 'ink';
 import { App, type Action } from './App.js';
-import type { AppConfig } from '../../core/config.js';
+import type { AppConfig, ProviderId } from '../../core/config.js';
 
 export { type Action };
 
@@ -14,9 +14,20 @@ function resetTerminal(): void {
   }
 }
 
-export async function runInkApp(config: AppConfig): Promise<Action> {
+export async function runInkApp(
+  config: AppConfig,
+  initialProvider?: ProviderId | null,
+): Promise<Action> {
   let action: Action = 'exit';
-  const instance = render(<App config={config} onAction={(nextAction) => { action = nextAction; }} />);
+  const instance = render(
+    <App
+      config={config}
+      initialProvider={initialProvider ?? null}
+      onAction={(nextAction) => {
+        action = nextAction;
+      }}
+    />,
+  );
   await instance.waitUntilExit();
   instance.clear();
   instance.cleanup();

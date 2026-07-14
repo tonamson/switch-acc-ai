@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureProfile } from "../src/core/accounts.js";
-import type { AppConfig } from "../src/core/config.js";
+import type { ProviderConfig } from "../src/core/config.js";
 import { loginCodex, readAccountLabel, readRateLimits, runCodex } from "../src/core/codex.js";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
 
 let oldPath: string | undefined;
 
-async function setup(): Promise<{ config: AppConfig; root: string }> {
+async function setup(): Promise<{ config: ProviderConfig; root: string }> {
   const root = await mkdtemp(join(tmpdir(), "sacc-codex-"));
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
@@ -52,11 +52,12 @@ describe("codex integration", () => {
       account: "acc2",
       user: "acc2@example.com",
       plan: "plus",
-      primary: { usedPercent: "75% used" },
-      secondary: { usedPercent: "90% used" },
-      resetCredits: "1",
+      fiveHour: { usedPercent: "75% used", remaining: "25% left" },
+      weekly: { usedPercent: "90% used", remaining: "10% left" },
+      monthly: { usedPercent: null, remaining: null, reset: null },
+      credits: "1",
     });
-    expect(status.primary.resetLabel).toMatch(
+    expect(status.fiveHour.reset).toMatch(
       /^resets \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+$/,
     );
   });
@@ -72,9 +73,10 @@ describe("codex integration", () => {
       account: "keyed",
       user: "keyed@example.com",
       plan: "plus",
-      primary: { usedPercent: "61% used" },
-      secondary: { usedPercent: "22% used" },
-      resetCredits: "7",
+      fiveHour: { usedPercent: "61% used", remaining: "39% left" },
+      weekly: { usedPercent: "22% used", remaining: "78% left" },
+      monthly: { usedPercent: null, remaining: null, reset: null },
+      credits: "7",
     });
     expect((await readFile(process.env.CODEX_APP_SERVER_EXIT_LOG, "utf8")).trim()).toBe("stdin-closed");
   });
@@ -87,9 +89,10 @@ describe("codex integration", () => {
 
     expect(status).toMatchObject({
       account: "legacy",
-      primary: { usedPercent: "44% used" },
-      secondary: { usedPercent: "11% used" },
-      resetCredits: "3",
+      fiveHour: { usedPercent: "44% used", remaining: "56% left" },
+      weekly: { usedPercent: "11% used", remaining: "89% left" },
+      monthly: { usedPercent: null, remaining: null, reset: null },
+      credits: "3",
     });
   });
 

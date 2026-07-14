@@ -11,9 +11,8 @@ import {
   symlink,
 } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { AppConfig } from "./config.js";
-
-const sharedAssetNames = ["skills", "plugins", "sessions", "config.toml"] as const;
+import type { ProviderConfig } from "./config.js";
+import { SHARED_ASSETS, type ProviderId } from "./config.js";
 
 export function isValidAccountName(name: string): boolean {
   return name.trim() !== "" && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\0");
@@ -25,7 +24,7 @@ export function ensureValidAccountName(name: string): void {
   }
 }
 
-export function profileDir(config: AppConfig, name: string): string {
+export function profileDir(config: ProviderConfig, name: string): string {
   ensureValidAccountName(name);
   return join(config.accountsDir, name);
 }
@@ -48,7 +47,7 @@ async function pathExistsOrSymlink(path: string): Promise<boolean> {
   }
 }
 
-export async function listAccounts(config: AppConfig): Promise<string[]> {
+export async function listAccounts(config: ProviderConfig): Promise<string[]> {
   if (!(await pathExists(config.accountsDir))) {
     return [];
   }
@@ -69,13 +68,13 @@ export async function listAccounts(config: AppConfig): Promise<string[]> {
   return accounts.sort((a, b) => a.localeCompare(b));
 }
 
-export async function ensureProfile(config: AppConfig, name: string): Promise<string> {
+export async function ensureProfile(config: ProviderConfig, name: string): Promise<string> {
   const dir = profileDir(config, name);
   await mkdir(dir, { recursive: true });
   return dir;
 }
 
-export async function requireProfile(config: AppConfig, name: string): Promise<string> {
+export async function requireProfile(config: ProviderConfig, name: string): Promise<string> {
   const dir = profileDir(config, name);
   try {
     const fileStat = await stat(dir);
@@ -88,15 +87,19 @@ export async function requireProfile(config: AppConfig, name: string): Promise<s
   throw new Error(`account not found: ${name}`);
 }
 
-export async function renameAccount(config: AppConfig, oldName: string, newName: string): Promise<void> {
+export async function renameAccount(
+  config: ProviderConfig,
+  oldName: string,
+  newName: string,
+): Promise<void> {
   const oldDir = await requireProfile(config, oldName);
   const newDir = profileDir(config, newName);
   if (await pathExists(newDir)) {
     throw new Error(`account already exists: ${newName}`);
   }
   try {
-    const stat = await lstat(newDir);
-    if (stat.isSymbolicLink()) {
+    const fileStat = await lstat(newDir);
+    if (fileStat.isSymbolicLink()) {
       await rm(newDir, { force: true });
     }
   } catch {
@@ -106,13 +109,17 @@ export async function renameAccount(config: AppConfig, oldName: string, newName:
   await rename(oldDir, newDir);
 }
 
-export async function removeAccount(config: AppConfig, name: string): Promise<void> {
+export async function removeAccount(config: ProviderConfig, name: string): Promise<void> {
   const dir = await requireProfile(config, name);
   await rm(dir, { recursive: true, force: true });
 }
 
-export async function linkSharedProfile(config: AppConfig, profilePath: string): Promise<void> {
-  for (const assetName of sharedAssetNames) {
+export async function linkSharedProfile(
+  config: ProviderConfig,
+  profilePath: string,
+  provider: ProviderId = "codex",
+): Promise<void> {
+  for (const assetName of SHARED_ASSETS[provider]) {
     const source = join(config.sharedHome, assetName);
     const target = join(profilePath, basename(assetName));
     if (!(await pathExistsOrSymlink(source))) {
