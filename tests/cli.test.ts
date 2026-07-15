@@ -75,9 +75,10 @@ describe("sacc cli", () => {
     const output = run(["status", "acc2"]);
     expect(output).toContain("codex status");
     expect(output).toContain("acc2");
-    expect(output).toContain("75% used");
+    expect(output).toContain("75%");
     expect(output).toContain("25% left");
-    expect(output).toMatch(/monthly\s+-/);
+    expect(output).toContain("█");
+    expect(output).toMatch(/monthly[\s\S]*?—/);
   });
 
   it("runs account command and forwards args", async () => {
@@ -134,9 +135,9 @@ describe("sacc cli", () => {
     expect(output).toContain("grok status");
     expect(output).toContain("work");
     expect(output).toContain("work@example.com");
-    // Unified layout always shows 5h / weekly / monthly (missing → "-")
-    expect(output).toMatch(/5h\s+-/);
-    expect(output).toMatch(/weekly\s+-/);
+    // Unified layout always shows 5h / weekly / monthly (missing → "—")
+    expect(output).toMatch(/5h[\s\S]*?—/);
+    expect(output).toMatch(/weekly[\s\S]*?—/);
     expect(output).toContain("monthly");
   });
 
