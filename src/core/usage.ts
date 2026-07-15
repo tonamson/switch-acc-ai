@@ -3,8 +3,8 @@
  *
  * Always expose the same windows:
  * - 5h: short rolling window (Codex has it; Grok does not → "-")
- * - weekly: week window (Codex secondary; Grok does not → "-")
- * - monthly: calendar billing month (Grok has it; Codex does not → "-")
+ * - weekly: week window (Codex secondary; Grok format=credits rate-limit %)
+ * - monthly: calendar billing month (Grok absolute credits; Codex does not → "-")
  *
  * Missing metrics must be `null` so the UI can render "-".
  */

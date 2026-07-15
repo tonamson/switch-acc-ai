@@ -73,28 +73,57 @@ describe("grok integration", () => {
     await expect(readAccountLabel(config, "empty")).resolves.toBe("Not signed in");
   });
 
-  it("parses billing usage from proxy response", async () => {
-    const billing = await fetchBillingUsage("token", {
-      fetchImpl: mockBillingFetch({
-        config: {
-          monthlyLimit: { val: 15000 },
-          used: { val: 1500 },
-          onDemandCap: { val: 0 },
-          billingPeriodStart: "2026-07-01T00:00:00+00:00",
-          billingPeriodEnd: "2026-08-01T00:00:00+00:00",
-        },
-      }),
-    });
+  it("parses billing usage from credits + absolute responses", async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("format=credits")) {
+        return new Response(
+          JSON.stringify({
+            config: {
+              currentPeriod: {
+                type: "USAGE_PERIOD_TYPE_WEEKLY",
+                start: "2026-07-14T19:53:12.512252+00:00",
+                end: "2026-07-21T19:53:12.512252+00:00",
+              },
+              creditUsagePercent: 10.0,
+              productUsage: [{ product: "GrokBuild", usagePercent: 10.0 }],
+              onDemandCap: { val: 0 },
+              onDemandUsed: { val: 0 },
+              prepaidBalance: { val: 0 },
+              billingPeriodStart: "2026-07-14T19:53:12.512252+00:00",
+              billingPeriodEnd: "2026-07-21T19:53:12.512252+00:00",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          config: {
+            monthlyLimit: { val: 20000 },
+            used: { val: 505 },
+            onDemandCap: { val: 0 },
+            billingPeriodStart: "2026-07-01T00:00:00+00:00",
+            billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const billing = await fetchBillingUsage("token", { fetchImpl });
 
     expect(billing).toMatchObject({
-      used: 1500,
-      monthlyLimit: 15000,
-      remaining: 13500,
+      creditUsagePercent: 10.0,
+      creditPeriodEnd: "2026-07-21T19:53:12.512252+00:00",
+      used: 505,
+      monthlyLimit: 20000,
+      remaining: 19495,
       onDemandCap: 0,
     });
   });
 
-  it("reads auth status with monthly usage", async () => {
+  it("reads auth status with weekly credits % and monthly absolute quota", async () => {
     const { config } = await setup();
     const profile = await ensureProfile(config, "work");
     await writeFile(
@@ -111,29 +140,51 @@ describe("grok integration", () => {
       }),
     );
 
-    const status = await readAuthStatus(config, "work", {
-      fetchImpl: mockBillingFetch({
-        config: {
-          monthlyLimit: { val: 15000 },
-          used: { val: 471 },
-          onDemandCap: { val: 0 },
-          billingPeriodEnd: "2026-08-01T00:00:00+00:00",
-        },
-      }),
-    });
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("format=credits")) {
+        return new Response(
+          JSON.stringify({
+            config: {
+              creditUsagePercent: 10.0,
+              productUsage: [{ product: "GrokBuild", usagePercent: 10.0 }],
+              currentPeriod: { end: "2026-07-21T19:53:12.512252+00:00" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          config: {
+            monthlyLimit: { val: 20000 },
+            used: { val: 505 },
+            onDemandCap: { val: 0 },
+            billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const status = await readAuthStatus(config, "work", { fetchImpl });
 
     expect(status).toMatchObject({
       account: "work",
       user: "work@example.com",
       plan: "oidc",
       fiveHour: { usedPercent: null, remaining: null, reset: null },
-      weekly: { usedPercent: null, remaining: null, reset: null },
+      weekly: {
+        usedPercent: "10% used",
+        remaining: "90% left",
+        reset: "resets 2026-07-21 UTC",
+      },
       monthly: {
-        usedPercent: "3.1% used",
-        remaining: "14529 left (471/15000)",
+        usedPercent: "2.5% used",
+        remaining: "19495 left (505/20000)",
         reset: "resets 2026-08-01 UTC",
       },
-      credits: "14529",
+      credits: "19495",
     });
   });
 
