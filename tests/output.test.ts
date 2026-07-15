@@ -31,7 +31,7 @@ describe("output formatting", () => {
     expect(output).not.toMatch(/[┌┐└┘│─├┤┬┴┼]/);
   });
 
-  it("formats unified codex status with dashes for missing windows", () => {
+  it("formats unified codex status with progress bars", () => {
     const output = formatStatus([
       {
         account: "acc2",
@@ -55,16 +55,19 @@ describe("output formatting", () => {
 
     expect(output).toContain("codex status");
     expect(output).toContain("acc2");
-    expect(output).toContain("75% used");
+    expect(output).toContain("acc2@example.com");
+    expect(output).toContain("75%");
     expect(output).toContain("25% left");
-    expect(output).toContain("90% used");
-    // monthly absent → "-"
-    expect(output).toMatch(/monthly\s+-/);
+    expect(output).toContain("90%");
+    expect(output).toContain("█");
+    expect(output).toContain("░");
+    // monthly absent → em dash
+    expect(output).toMatch(/monthly[\s\S]*?—/);
     expect(output).toContain("broken");
     expect(output).toContain("no response from codex app-server");
   });
 
-  it("formats unified grok status with dashes for 5h/weekly", () => {
+  it("formats unified grok status with progress bars", () => {
     const output = formatStatus(
       [
         {
@@ -86,11 +89,12 @@ describe("output formatting", () => {
 
     expect(output).toContain("grok status");
     expect(output).toContain("work@example.com");
-    expect(output).toMatch(/5h\s+-/);
-    expect(output).toMatch(/weekly\s+-/);
-    expect(output).toContain("3.1% used");
+    expect(output).toMatch(/5h[\s\S]*?—/);
+    expect(output).toMatch(/weekly[\s\S]*?—/);
+    expect(output).toContain("3.1%");
     expect(output).toContain("14529 left (471/15000)");
     expect(output).toContain("resets 2026-08-01 UTC");
+    expect(output).toContain("█");
   });
 
   it("formats actionable errors", () => {

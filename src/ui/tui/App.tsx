@@ -7,7 +7,12 @@ import {
   readAccountLabel as readGrokLabel,
   readAuthStatus,
 } from '../../core/grok.js';
-import { formatMetric, type UsageStatus } from '../../core/usage.js';
+import type { UsageMetric, UsageStatus } from '../../core/usage.js';
+import {
+  formatUsageWindow,
+  inkColorByLevel,
+  type FormattedWindow,
+} from '../usage-display.js';
 
 export type Action =
   | 'exit'
@@ -40,34 +45,60 @@ function menuItems(provider: ProviderId): { label: string; hint: string; value: 
   ];
 }
 
-function usageColor(value: string): 'green' | 'yellow' | 'red' | undefined {
-  if (value === '-') return undefined;
-  const used = Number.parseFloat(value);
-  if (Number.isNaN(used)) return undefined;
-  if (used >= 85) return 'red';
-  if (used >= 70) return 'yellow';
-  return 'green';
+function UsageWindowRow({ window }: { window: FormattedWindow }) {
+  const color = inkColorByLevel(window.level);
+  return (
+    <Box flexDirection="column" marginBottom={0}>
+      <Box>
+        <Text color="gray">{window.label.padEnd(9)}</Text>
+        <Text color={color}>{window.bar}</Text>
+        <Text>  </Text>
+        <Text color={color} bold={!window.absent}>
+          {window.percentLabel.padStart(5)}
+        </Text>
+      </Box>
+      {window.detail ? (
+        <Text color="gray">{' '.repeat(9)}{window.detail}</Text>
+      ) : null}
+    </Box>
+  );
 }
 
-function MetricLine({ label, line }: { label: string; line: string }) {
-  const usedMatch = line.match(/(\d+(?:\.\d+)?% used)/);
-  if (line === '-' || !usedMatch) {
-    return (
-      <Text>
-        <Text color="gray">{label.padEnd(9)}</Text>
-        <Text color={line === '-' ? 'gray' : undefined}>{line}</Text>
-      </Text>
-    );
-  }
-  const used = usedMatch[1];
-  const [before, after] = line.split(used);
+function UsagePanel({ status }: { status: UsageStatus }) {
+  const windows: { label: string; metric: UsageMetric }[] = [
+    { label: '5h', metric: status.fiveHour },
+    { label: 'weekly', metric: status.weekly },
+    { label: 'monthly', metric: status.monthly },
+  ];
+
   return (
-    <Text>
-      <Text color="gray">{label.padEnd(9)}</Text>
-      {before}
-      <Text color={usageColor(used)}>{used}</Text>
-      {after}
-    </Text>
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text bold color="white">{status.account}</Text>
+      </Box>
+      <Text color="gray">
+        {status.user}
+        <Text color="gray">  ·  </Text>
+        {status.plan}
+      </Text>
+      <Box marginTop={1} flexDirection="column">
+        {windows.map(({ label, metric }) => (
+          <UsageWindowRow key={label} window={formatUsageWindow(label, metric)} />
+        ))}
+        <Box marginTop={1}>
+          <Text color="gray">{'credits'.padEnd(9)}</Text>
+          <Text color={status.credits ? 'cyan' : 'gray'}>{status.credits ?? '—'}</Text>
+        </Box>
+        {status.reached ? (
+          <Box marginTop={1}>
+            <Text color="yellow">⚠ limit reached: {status.reached}</Text>
+          </Box>
+        ) : null}
+        {status.note ? (
+          <Text color="gray">note  {status.note}</Text>
+        ) : null}
+      </Box>
+    </Box>
   );
 }
 
@@ -76,13 +107,24 @@ function Key({ children }: { children: string }) {
 }
 
 function detailTitle(detailView: DetailView, selectedLabel: string, accountAction: 'rename' | 'remove'): string {
-  if (detailView === 'overview') return selectedLabel;
-  if (detailView === 'run') return 'RUN';
-  if (detailView === 'accountAction') return accountAction.toUpperCase();
-  if (detailView === 'loginName') return 'ADD ACCOUNT';
-  if (detailView === 'renameName') return 'RENAME';
-  if (detailView === 'removeConfirm') return 'REMOVE';
-  return detailView.toUpperCase();
+  switch (detailView) {
+    case 'overview':
+      return selectedLabel;
+    case 'run':
+      return 'RUN';
+    case 'status':
+      return 'USAGE';
+    case 'list':
+      return 'ACCOUNTS';
+    case 'accountAction':
+      return accountAction.toUpperCase();
+    case 'loginName':
+      return 'ADD ACCOUNT';
+    case 'renameName':
+      return 'RENAME';
+    case 'removeConfirm':
+      return 'REMOVE';
+  }
 }
 
 export function App({
@@ -418,25 +460,12 @@ export function App({
         </Box>
       );
     }
-    // Unified layout for every provider: 5h / weekly / monthly (missing → "-")
     return (
       <Box flexDirection="column">
-        <Box justifyContent="space-between">
-          <Text bold>{stat.account}</Text>
+        <Box justifyContent="flex-end" marginBottom={0}>
           <Text color="gray">{statusIndex + 1}/{statusInfo.length}</Text>
         </Box>
-        <Text color="gray">{stat.user}  {stat.plan}</Text>
-        <Box marginTop={1} flexDirection="column">
-          <MetricLine label="5h" line={formatMetric(stat.fiveHour)} />
-          <MetricLine label="weekly" line={formatMetric(stat.weekly)} />
-          <MetricLine label="monthly" line={formatMetric(stat.monthly)} />
-          <Text>
-            <Text color="gray">{'credits'.padEnd(9)}</Text>
-            {stat.credits ?? '-'}
-          </Text>
-          {stat.reached && <Text color="yellow">Limit reached: {stat.reached}</Text>}
-          {stat.note && <Text color="gray">note  {stat.note}</Text>}
-        </Box>
+        <UsagePanel status={stat} />
       </Box>
     );
   };

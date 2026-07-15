@@ -1,6 +1,11 @@
 import type { ProviderId } from "../core/config.js";
-import { formatMetric, type UsageStatus } from "../core/usage.js";
+import type { UsageStatus } from "../core/usage.js";
 import { brand, command, danger, heading, muted, warning } from "./theme.js";
+import {
+  colorByLevel,
+  formatUsageWindow,
+  type FormattedWindow,
+} from "./usage-display.js";
 
 export type AccountListRow = {
   profile: string;
@@ -21,19 +26,19 @@ function usage(line: string): string {
   return `  ${command(line)}`;
 }
 
-function percent(value: string): string {
-  if (value === "-") return muted(value);
-  const used = Number.parseFloat(value);
-  if (Number.isNaN(used)) return value;
-  if (used >= 85) return danger(value);
-  if (used >= 70) return warning(value);
-  return value;
-}
+function renderWindow(window: FormattedWindow): string[] {
+  const label = muted(window.label.padEnd(10));
+  if (window.absent) {
+    return [`  ${label}${muted(window.bar)}  ${muted("—")}`];
+  }
 
-/** Color only the used% token inside a metric line. */
-function colorMetricLine(line: string): string {
-  if (line === "-") return muted("-");
-  return line.replace(/(\d+(?:\.\d+)?% used)/g, (match) => percent(match));
+  const bar = colorByLevel(window.bar, window.level);
+  const pct = colorByLevel(window.percentLabel.padStart(5), window.level);
+  const lines = [`  ${label}${bar}  ${pct}`];
+  if (window.detail) {
+    lines.push(`  ${" ".repeat(10)}${muted(window.detail)}`);
+  }
+  return lines;
 }
 
 export function formatHelp(): string {
@@ -95,43 +100,46 @@ export function formatAccountsTable(rows: AccountListRow[], provider: ProviderId
 }
 
 /**
- * Unified usage layout for every provider:
+ * Unified usage layout for every provider (CLI):
  *
- *   user
- *   plan
- *   5h       <used · left · reset> | -
- *   weekly   <used · left · reset> | -
- *   monthly  <used · left · reset> | -
- *   credits  <n> | -
+ *   account
+ *   user / plan
+ *   5h       ████████░░░░░░░░░░  75%
+ *            25% left · resets …
+ *   weekly / monthly / credits
  */
 export function formatStatus(rows: StatusRenderRow[], provider: ProviderId = "codex"): string {
   const blocks = rows.map((row) => {
     if ("error" in row) {
-      return [`  ${warning(row.account)}`, `  ${muted("error".padEnd(10))}${row.error}`].join("\n");
+      return [
+        `  ${warning(row.account)}`,
+        `  ${muted("error".padEnd(10))}${danger(row.error)}`,
+      ].join("\n");
     }
 
     const status = row as UsageStatus;
+    const meta = `${status.user}  ·  ${status.plan}`;
     const lines = [
       `  ${heading(status.account)}`,
-      `  ${muted("user".padEnd(10))}${status.user}`,
-      `  ${muted("plan".padEnd(10))}${status.plan}`,
-      `  ${muted("5h".padEnd(10))}${colorMetricLine(formatMetric(status.fiveHour))}`,
-      `  ${muted("weekly".padEnd(10))}${colorMetricLine(formatMetric(status.weekly))}`,
-      `  ${muted("monthly".padEnd(10))}${colorMetricLine(formatMetric(status.monthly))}`,
-      `  ${muted("credits".padEnd(10))}${status.credits ?? "-"}`,
+      `  ${muted(meta)}`,
+      "",
+      ...renderWindow(formatUsageWindow("5h", status.fiveHour)),
+      ...renderWindow(formatUsageWindow("weekly", status.weekly)),
+      ...renderWindow(formatUsageWindow("monthly", status.monthly)),
+      `  ${muted("credits".padEnd(10))}${status.credits ?? muted("—")}`,
     ];
 
     if (status.reached) {
       lines.push(`  ${muted("reached".padEnd(10))}${warning(status.reached)}`);
     }
     if (status.note) {
-      lines.push(`  ${muted("note".padEnd(10))}${status.note}`);
+      lines.push(`  ${muted("note".padEnd(10))}${muted(status.note)}`);
     }
 
     return lines.join("\n");
   });
 
-  return `${title(`${provider} status`)}\n${blocks.join("\n\n")}`;
+  return `${title(`${provider} status`)}\n\n${blocks.join("\n\n")}`;
 }
 
 export function formatError(message: string, hint?: string): string {

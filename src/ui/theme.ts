@@ -25,3 +25,7 @@ export function danger(value: string): string {
 export function warning(value: string): string {
   return enabled ? pc.yellow(value) : value;
 }
+
+export function success(value: string): string {
+  return enabled ? pc.green(value) : value;
+}
