@@ -1,6 +1,6 @@
 {
   "name": "switch-acc-ai",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Switch Codex and Grok accounts with isolated CLI home profiles.",
   "type": "module",
   "bin": {
@@ -11,6 +11,14 @@
     "README.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tonamson/switch-acc-ai.git"
+  },
+  "homepage": "https://github.com/tonamson/switch-acc-ai#readme",
+  "bugs": {
+    "url": "https://github.com/tonamson/switch-acc-ai/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -22,10 +30,8 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
-    "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
     "ink": "^7.1.0",
-    "ora": "^8.1.0",
     "picocolors": "^1.1.1",
     "react": "^19.2.7"
   },

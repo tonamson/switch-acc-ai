@@ -1,7 +1,7 @@
 import type { UsageMetric } from "../core/usage.js";
 import { danger, muted, success, warning } from "./theme.js";
 
-export const BAR_WIDTH = 18;
+const BAR_WIDTH = 18;
 const FILLED = "█";
 const EMPTY = "░";
 

@@ -14,6 +14,7 @@ describe("output formatting", () => {
     expect(output).toContain("Run");
     expect(output).toContain("sacc pick [args]");
     expect(output).toContain("sacc grok login <name>");
+    expect(output).toContain("sacc logs");
     expect(output).toContain("Accounts");
     expect(output).toContain("Status");
   });

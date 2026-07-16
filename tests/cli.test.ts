@@ -39,6 +39,7 @@ printf '%s\\n' "$*" > "$NPM_ARGS_LOG"
     GROK_LOGIN_LOG: join(root, "grok-login.log"),
     GROK_LOGIN_ARGS_LOG: join(root, "grok-login-args.log"),
     NPM_ARGS_LOG: join(root, "npm.log"),
+    SACC_LOG_DIR: join(root, "sacc-logs"),
     NO_COLOR: "1",
   };
   await mkdir(env.CODEX_SHARED_HOME!, { recursive: true });
@@ -61,6 +62,13 @@ describe("sacc cli", () => {
     expect(output).toContain("sacc pick [args]");
     expect(output).toContain("sacc grok login <name>");
     expect(output).toContain("sacc update");
+    expect(output).toContain("sacc logs");
+  });
+
+  it("prints today's log path", () => {
+    const output = run(["logs"]);
+    expect(output).toContain("sacc logs (today)");
+    expect(output).toContain(env.SACC_LOG_DIR);
   });
 
   it("logs in and lists codex accounts", () => {

@@ -53,6 +53,7 @@ export function formatHelp(): string {
     cmd("sacc <account> [args]", "run Codex (compat shortcut)"),
     cmd("sacc pick [args]", "choose Codex account then run"),
     cmd("sacc update", "update sacc from npm"),
+    cmd("sacc logs", "print today's log file path"),
     "",
     heading("Accounts"),
     cmd("sacc codex login <name>", "login Codex OAuth into a profile"),

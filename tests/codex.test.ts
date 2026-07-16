@@ -18,6 +18,7 @@ async function setup(): Promise<{ config: ProviderConfig; root: string }> {
   process.env.CODEX_ACCOUNT_LOG = join(root, "account.log");
   process.env.CODEX_ARGS_LOG = join(root, "args.log");
   process.env.CODEX_LOGIN_LOG = join(root, "login.log");
+  process.env.SACC_LOG_DIR = join(root, "sacc-logs");
   const config = {
     accountsDir: join(root, "accounts"),
     sharedHome: join(root, "shared"),
@@ -32,6 +33,7 @@ afterEach(() => {
   delete process.env.CODEX_ARGS_LOG;
   delete process.env.CODEX_LOGIN_LOG;
   delete process.env.CODEX_APP_SERVER_EXIT_LOG;
+  delete process.env.SACC_LOG_DIR;
 });
 
 describe("codex integration", () => {

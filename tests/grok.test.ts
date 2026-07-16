@@ -25,6 +25,7 @@ async function setup(): Promise<{ config: ProviderConfig; root: string }> {
   process.env.GROK_ARGS_LOG = join(root, "args.log");
   process.env.GROK_LOGIN_LOG = join(root, "login.log");
   process.env.GROK_LOGIN_ARGS_LOG = join(root, "login-args.log");
+  process.env.SACC_LOG_DIR = join(root, "sacc-logs");
   const config = {
     accountsDir: join(root, "accounts"),
     sharedHome: join(root, "shared"),
@@ -47,6 +48,7 @@ afterEach(() => {
   delete process.env.GROK_ARGS_LOG;
   delete process.env.GROK_LOGIN_LOG;
   delete process.env.GROK_LOGIN_ARGS_LOG;
+  delete process.env.SACC_LOG_DIR;
 });
 
 describe("grok integration", () => {
@@ -224,13 +226,24 @@ describe("grok integration", () => {
     expect((await readFile(process.env.GROK_ARGS_LOG!, "utf8")).trim()).toBe("-p hello");
   });
 
-  it("delegates login to grok login", async () => {
+  it("delegates login to grok login with browser OAuth by default", async () => {
     const { config } = await setup();
 
-    const code = await loginGrok(config, "newacc", ["--oauth"]);
+    const code = await loginGrok(config, "newacc");
 
     expect(code).toBe(0);
     expect((await readFile(process.env.GROK_LOGIN_LOG!, "utf8")).trim()).toContain("newacc");
     expect((await readFile(process.env.GROK_LOGIN_ARGS_LOG!, "utf8")).trim()).toBe("login --oauth");
+  });
+
+  it("preserves an explicit login flow flag", async () => {
+    const { config } = await setup();
+
+    const code = await loginGrok(config, "device", ["--device-auth"]);
+
+    expect(code).toBe(0);
+    expect((await readFile(process.env.GROK_LOGIN_ARGS_LOG!, "utf8")).trim()).toBe(
+      "login --device-auth",
+    );
   });
 });

@@ -25,9 +25,19 @@ import {
   readAuthStatus,
   runGrok,
 } from "../core/grok.js";
+import {
+  getSessionId,
+  getTodayLogPath,
+  initLogger,
+  logException,
+  logInfo,
+  logWarn,
+  runtimeSnapshot,
+  serializeError,
+} from "../core/log.js";
 import { formatAccountsTable, formatError, formatHelp, formatStatus } from "../ui/output.js";
 
-export type CreateProgramOptions = {
+type CreateProgramOptions = {
   config?: AppConfig;
 };
 
@@ -47,19 +57,47 @@ function hintForError(message: string): string | undefined {
   return undefined;
 }
 
+function errorHintWithLog(message: string): string {
+  const hint = hintForError(message);
+  const logLine = `Log: ${getTodayLogPath()}`;
+  return hint ? `${hint}\n${logLine}` : logLine;
+}
+
+async function printLogsPath(): Promise<void> {
+  const path = getTodayLogPath();
+  console.log(`sacc logs (today)\n  ${path}`);
+}
+
 async function printList(config: AppConfig, provider: ProviderId): Promise<void> {
   const providerConfig = getProvider(config, provider);
+  logInfo("list start", {
+    provider,
+    accountsDir: providerConfig.accountsDir,
+    sharedHome: providerConfig.sharedHome,
+  });
   const rows = [];
   for (const name of await listAccounts(providerConfig)) {
-    const identity =
-      provider === "codex"
-        ? await readCodexLabel(providerConfig, name).catch(() => "unknown")
-        : await readGrokLabel(providerConfig, name).catch(() => "unknown");
-    rows.push({
-      profile: name,
-      identity,
-    });
+    try {
+      const identity =
+        provider === "codex"
+          ? await readCodexLabel(providerConfig, name)
+          : await readGrokLabel(providerConfig, name);
+      rows.push({ profile: name, identity });
+    } catch (error) {
+      logWarn("list identity failed", {
+        provider,
+        account: name,
+        error: serializeError(error),
+      });
+      rows.push({ profile: name, identity: "unknown" });
+    }
   }
+  logInfo("list ok", {
+    provider,
+    accountsDir: providerConfig.accountsDir,
+    count: rows.length,
+    accounts: rows,
+  });
   console.log(formatAccountsTable(rows, provider));
 }
 
@@ -69,6 +107,7 @@ async function printStatus(
   target?: string,
   all = false,
 ): Promise<void> {
+  logInfo("status start", { provider, target: target ?? null, all });
   const providerConfig = getProvider(config, provider);
 
   if (all) {
@@ -76,17 +115,26 @@ async function printStatus(
     let failed = false;
     for (const name of await listAccounts(providerConfig)) {
       try {
-        rows.push(
+        const row =
           provider === "codex"
             ? await readRateLimits(providerConfig, name)
-            : await readAuthStatus(providerConfig, name),
-        );
+            : await readAuthStatus(providerConfig, name);
+        rows.push(row);
+        logInfo("status account ok", {
+          provider,
+          account: name,
+          user: "user" in row ? row.user : undefined,
+          plan: "plan" in row ? row.plan : undefined,
+        });
       } catch (error) {
         failed = true;
-        rows.push({ account: name, error: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        logException("status account failed", error, { provider, account: name });
+        rows.push({ account: name, error: message });
       }
     }
     console.log(formatStatus(rows, provider));
+    logInfo("status done", { provider, all: true, count: rows.length, failed });
     if (failed) {
       process.exitCode = 1;
     }
@@ -96,11 +144,23 @@ async function printStatus(
   if (!target) {
     throw new Error(`missing account name; use sacc ${provider} status <name> or sacc ${provider} status --all`);
   }
-  const row =
-    provider === "codex"
-      ? await readRateLimits(providerConfig, target)
-      : await readAuthStatus(providerConfig, target);
-  console.log(formatStatus([row], provider));
+  try {
+    const row =
+      provider === "codex"
+        ? await readRateLimits(providerConfig, target)
+        : await readAuthStatus(providerConfig, target);
+    logInfo("status ok", {
+      provider,
+      account: target,
+      user: row.user,
+      plan: row.plan,
+      note: row.note ?? null,
+    });
+    console.log(formatStatus([row], provider));
+  } catch (error) {
+    logException("status failed", error, { provider, account: target });
+    throw error;
+  }
 }
 
 async function runProvider(
@@ -109,6 +169,7 @@ async function runProvider(
   account: string,
   args: string[],
 ): Promise<void> {
+  logInfo("run provider", { provider, account, args });
   const providerConfig = getProvider(config, provider);
   await requireProfile(providerConfig, account);
   process.exitCode =
@@ -123,11 +184,44 @@ async function loginProvider(
   name: string,
   loginArgs: string[] = [],
 ): Promise<void> {
+  logInfo("login provider", { provider, account: name, loginArgs });
   const providerConfig = getProvider(config, provider);
   process.exitCode =
     provider === "codex"
       ? await loginCodex(providerConfig, name)
       : await loginGrok(providerConfig, name, loginArgs);
+}
+
+async function renameProvider(
+  config: AppConfig,
+  provider: ProviderId,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  logInfo("rename provider", { provider, from: oldName, to: newName });
+  await renameAccount(getProvider(config, provider), oldName, newName);
+}
+
+async function removeProvider(
+  config: AppConfig,
+  provider: ProviderId,
+  name: string,
+): Promise<void> {
+  logInfo("remove provider", { provider, account: name });
+  await requireProfile(getProvider(config, provider), name);
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(`sacc ${provider} remove requires an interactive terminal`);
+  }
+  const { input } = await import("@inquirer/prompts");
+  const answer = await input({
+    message: `Delete ${provider} account profile "${name}"? Type ${name} to confirm`,
+  });
+  if (answer === name) {
+    await removeAccount(getProvider(config, provider), name);
+    logInfo("remove confirmed", { provider, account: name });
+  } else {
+    logWarn("remove cancelled", { provider, account: name, typed: answer });
+  }
 }
 
 function addProviderCommands(parent: Command, config: AppConfig, provider: ProviderId): void {
@@ -160,6 +254,7 @@ function addProviderCommands(parent: Command, config: AppConfig, provider: Provi
     .allowExcessArguments(true)
     .argument("[args...]", `${provider} args`)
     .action(async (args: string[]) => {
+      logInfo("pick start", { provider, args });
       if (process.stdin.isTTY && process.stdout.isTTY) {
         const { pickAndRunAccount } = await import("../ui/menu.js");
         await pickAndRunAccount(config, provider, args);
@@ -171,21 +266,11 @@ function addProviderCommands(parent: Command, config: AppConfig, provider: Provi
     });
 
   cmd.command("rename <oldName> <newName>").action(async (oldName: string, newName: string) => {
-    await renameAccount(getProvider(config, provider), oldName, newName);
+    await renameProvider(config, provider, oldName, newName);
   });
 
   cmd.command("remove <name>").action(async (name: string) => {
-    await requireProfile(getProvider(config, provider), name);
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error(`sacc ${provider} remove requires an interactive terminal`);
-    }
-    const { input } = await import("@inquirer/prompts");
-    const answer = await input({
-      message: `Delete ${provider} account profile "${name}"? Type ${name} to confirm`,
-    });
-    if (answer === name) {
-      await removeAccount(getProvider(config, provider), name);
-    }
+    await removeProvider(config, provider, name);
   });
 
   cmd
@@ -196,6 +281,7 @@ function addProviderCommands(parent: Command, config: AppConfig, provider: Provi
     .action(async (account: string | undefined, cliArgs: string[]) => {
       if (!account) {
         if (process.stdin.isTTY && process.stdout.isTTY) {
+          logInfo("menu open via cli", { provider });
           const { openMainMenu } = await import("../ui/menu.js");
           await openMainMenu(config, provider);
         } else {
@@ -207,7 +293,7 @@ function addProviderCommands(parent: Command, config: AppConfig, provider: Provi
     });
 }
 
-export function createProgram(options: CreateProgramOptions = {}): Command {
+function createProgram(options: CreateProgramOptions = {}): Command {
   const config = options.config || resolveConfig();
   const program = new Command();
 
@@ -220,6 +306,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.helpInformation = () => `${formatHelp()}\n`;
 
   program.command("update").action(() => {
+    logInfo("update start");
     const result = spawnSync("npm", ["install", "-g", "switch-acc-ai@latest"], {
       stdio: "inherit",
       shell: true,
@@ -228,7 +315,15 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
       throw result.error;
     }
     process.exitCode = result.status ?? 1;
+    logInfo("update exit", { code: process.exitCode });
   });
+
+  program
+    .command("logs")
+    .description("print today's log file path")
+    .action(async () => {
+      await printLogsPath();
+    });
 
   addProviderCommands(program, config, "codex");
   addProviderCommands(program, config, "grok");
@@ -250,6 +345,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
     .allowExcessArguments(true)
     .argument("[args...]", "codex args")
     .action(async (args: string[]) => {
+      logInfo("pick start", { provider: "codex", args, compat: true });
       if (process.stdin.isTTY && process.stdout.isTTY) {
         const { pickAndRunAccount } = await import("../ui/menu.js");
         await pickAndRunAccount(config, "codex", args);
@@ -260,18 +356,11 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
       );
     });
   program.command("rename <oldName> <newName>").action(async (oldName: string, newName: string) => {
-    await renameAccount(config.codex, oldName, newName);
+    await renameProvider(config, "codex", oldName, newName);
   });
   program.command("remove <name>").action(async (name: string) => {
-    await requireProfile(config.codex, name);
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error("sacc remove requires an interactive terminal");
-    }
-    const { input } = await import("@inquirer/prompts");
-    const answer = await input({ message: `Delete account profile "${name}"? Type ${name} to confirm` });
-    if (answer === name) {
-      await removeAccount(config.codex, name);
-    }
+    // Compat path: same interactive confirm as provider remove, labeled codex.
+    await removeProvider(config, "codex", name);
   });
 
   program
@@ -282,6 +371,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
     .action(async (accountOrProvider: string | undefined, rest: string[]) => {
       if (!accountOrProvider) {
         if (process.stdin.isTTY && process.stdout.isTTY) {
+          logInfo("menu open via cli", { provider: null });
           const { openMainMenu } = await import("../ui/menu.js");
           await openMainMenu(config);
         } else {
@@ -298,6 +388,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
         // provider name and no args, open that provider menu when TTY.
         if (rest.length === 0) {
           if (process.stdin.isTTY && process.stdout.isTTY) {
+            logInfo("menu open via cli", { provider: accountOrProvider });
             const { openMainMenu } = await import("../ui/menu.js");
             await openMainMenu(config, accountOrProvider);
           } else {
@@ -322,18 +413,44 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
 }
 
 export async function runProgram(argv: string[] = process.argv): Promise<void> {
-  const program = createProgram();
+  initLogger();
+  const userArgs = argv.slice(2);
+  const config = resolveConfig();
+  logInfo("cli start", {
+    argv: userArgs,
+    sessionId: getSessionId(),
+    logFile: getTodayLogPath(),
+    config,
+    runtime: runtimeSnapshot(),
+  });
+
+  const program = createProgram({ config });
   try {
     await program.parseAsync(argv);
+    logInfo("cli end", {
+      exitCode: process.exitCode ?? 0,
+      sessionId: getSessionId(),
+      logFile: getTodayLogPath(),
+    });
   } catch (error) {
     if (error instanceof Error && error.name === "ExitPromptError") {
+      logInfo("cli cancelled", {
+        reason: "ExitPromptError",
+        error: serializeError(error),
+      });
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("(outputHelp)")) {
       return;
     }
-    console.error(formatError(message, hintForError(message)));
+    logException("cli error", error, {
+      argv: userArgs,
+      sessionId: getSessionId(),
+      logFile: getTodayLogPath(),
+      runtime: runtimeSnapshot(),
+    });
+    console.error(formatError(message, errorHintWithLog(message)));
     process.exitCode = 1;
   }
 }

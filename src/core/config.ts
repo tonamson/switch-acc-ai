@@ -13,8 +13,6 @@ export type AppConfig = {
   grok: ProviderConfig;
 };
 
-export const PROVIDER_IDS: readonly ProviderId[] = ["codex", "grok"] as const;
-
 export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
   codex: ["skills", "plugins", "sessions", "config.toml"],
   grok: ["skills", "plugins", "agents", "sessions", "config.toml"],

@@ -50,16 +50,7 @@ export function emptyUsageStatus(account: string, extras: Partial<UsageStatus> =
   };
 }
 
-/** Format a single metric line: missing whole window → "-", else join parts with " · " and "-" per missing part. */
-export function formatMetric(metric: UsageMetric): string {
-  const parts = [metric.usedPercent, metric.remaining, metric.reset];
-  if (parts.every((part) => part === null)) {
-    return "-";
-  }
-  return parts.map((part) => part ?? "-").join("  ·  ");
-}
-
-export function usedPercentFromNumber(usedPercent: number | undefined): string | null {
+function usedPercentFromNumber(usedPercent: number | undefined): string | null {
   if (typeof usedPercent !== "number" || Number.isNaN(usedPercent)) {
     return null;
   }
@@ -67,7 +58,7 @@ export function usedPercentFromNumber(usedPercent: number | undefined): string |
 }
 
 /** Approximate remaining from used% when absolute quota is unknown. */
-export function remainingFromUsedPercent(usedPercent: number | undefined): string | null {
+function remainingFromUsedPercent(usedPercent: number | undefined): string | null {
   if (typeof usedPercent !== "number" || Number.isNaN(usedPercent)) {
     return null;
   }
