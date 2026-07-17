@@ -1,6 +1,6 @@
 {
   "name": "switch-acc-ai",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Switch Codex and Grok accounts with isolated CLI home profiles.",
   "type": "module",
   "bin": {
