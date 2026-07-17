@@ -1,6 +1,7 @@
 import type { ProviderId } from "../core/config.js";
+import type { UpdateInfo } from "../core/update-check.js";
 import type { UsageStatus } from "../core/usage.js";
-import { brand, command, danger, heading, muted, warning } from "./theme.js";
+import { brand, command, danger, heading, muted, success, warning } from "./theme.js";
 import {
   colorByLevel,
   formatUsageWindow,
@@ -151,4 +152,12 @@ export function formatError(message: string, hint?: string): string {
   }
 
   return lines.join("\n");
+}
+
+/** Notice printed when a newer npm release is available. */
+export function formatUpdateNotice(info: UpdateInfo): string {
+  return [
+    `${success("update available")}  ${muted(info.currentVersion)} → ${heading(info.latestVersion)}`,
+    `${muted("run")}  ${command("sacc update")}`,
+  ].join("\n");
 }

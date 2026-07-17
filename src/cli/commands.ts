@@ -35,7 +35,14 @@ import {
   runtimeSnapshot,
   serializeError,
 } from "../core/log.js";
-import { formatAccountsTable, formatError, formatHelp, formatStatus } from "../ui/output.js";
+import { checkForUpdate } from "../core/update-check.js";
+import {
+  formatAccountsTable,
+  formatError,
+  formatHelp,
+  formatStatus,
+  formatUpdateNotice,
+} from "../ui/output.js";
 
 type CreateProgramOptions = {
   config?: AppConfig;
@@ -412,6 +419,24 @@ function createProgram(options: CreateProgramOptions = {}): Command {
   return program;
 }
 
+async function maybePrintUpdateNotice(userArgs: string[]): Promise<void> {
+  // Skip while updating, and only surface on interactive terminals.
+  if (userArgs[0] === "update") return;
+  if (!process.stderr.isTTY) return;
+
+  try {
+    const info = await checkForUpdate();
+    if (!info?.updateAvailable) return;
+    logInfo("update available", {
+      currentVersion: info.currentVersion,
+      latestVersion: info.latestVersion,
+    });
+    console.error(`\n${formatUpdateNotice(info)}`);
+  } catch (error) {
+    logWarn("update check failed", { error: serializeError(error) });
+  }
+}
+
 export async function runProgram(argv: string[] = process.argv): Promise<void> {
   initLogger();
   const userArgs = argv.slice(2);
@@ -452,5 +477,7 @@ export async function runProgram(argv: string[] = process.argv): Promise<void> {
     });
     console.error(formatError(message, errorHintWithLog(message)));
     process.exitCode = 1;
+  } finally {
+    await maybePrintUpdateNotice(userArgs);
   }
 }
