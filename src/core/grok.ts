@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ensureProfile, linkSharedProfile, requireProfile } from "./accounts.js";
+import {
+  ensureProfile,
+  linkSharedProfile,
+  requireProfile,
+  watchSharedProfileLinks,
+} from "./accounts.js";
 import type { ProviderConfig } from "./config.js";
 import {
   logDebug,
@@ -521,6 +526,8 @@ export async function readAuthStatus(
 export async function runGrok(config: ProviderConfig, name: string, args: string[]): Promise<number> {
   const profilePath = await requireProfile(config, name);
   await linkSharedProfile(config, profilePath, "grok");
+  // Grok atomic-writes config.toml and breaks our symlink mid-session; keep repairing.
+  const linkGuard = watchSharedProfileLinks(config, profilePath, "grok");
   prepareInteractiveChild(`grok run ${name}`);
   const leaderSocket = join(profilePath, "leader.sock");
   const env: NodeJS.ProcessEnv = {
@@ -567,12 +574,15 @@ export async function runGrok(config: ProviderConfig, name: string, args: string
       leaderSocket,
     });
     throw error;
+  } finally {
+    await linkGuard.stop();
   }
 }
 
 export async function loginGrok(config: ProviderConfig, name: string, args: string[] = []): Promise<number> {
   const profilePath = await ensureProfile(config, name);
   await linkSharedProfile(config, profilePath, "grok");
+  const linkGuard = watchSharedProfileLinks(config, profilePath, "grok");
   prepareInteractiveChild(`grok login ${name}`);
 
   // Browser OAuth is the documented default and opens the login page.
@@ -628,5 +638,7 @@ export async function loginGrok(config: ProviderConfig, name: string, args: stri
       leaderSocket,
     });
     throw error;
+  } finally {
+    await linkGuard.stop();
   }
 }
