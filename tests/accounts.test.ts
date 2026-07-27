@@ -122,13 +122,14 @@ describe("account filesystem operations", () => {
     expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
   });
 
-  it("links grok shared assets including installed-plugins", async () => {
+  it("links grok shared assets including installed-plugins and rules", async () => {
     const config = await testConfig();
     const profile = await ensureProfile(config, "work");
     await mkdir(config.sharedHome, { recursive: true });
     await mkdir(join(config.sharedHome, "agents"));
     await mkdir(join(config.sharedHome, "skills"));
     await mkdir(join(config.sharedHome, "installed-plugins"));
+    await mkdir(join(config.sharedHome, "rules"));
     await writeFile(join(config.sharedHome, "config.toml"), "model = \"shared\"\n");
 
     await linkSharedProfile(config, profile, "grok");
@@ -136,8 +137,30 @@ describe("account filesystem operations", () => {
     expect((await lstat(join(profile, "agents"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(profile, "skills"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(profile, "installed-plugins"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(profile, "rules"))).isSymbolicLink()).toBe(true);
+    expect(await readlink(join(profile, "rules"))).toBe(join(config.sharedHome, "rules"));
     expect((await lstat(join(profile, "config.toml"))).isSymbolicLink()).toBe(true);
     expect(await readlink(join(profile, "config.toml"))).toBe(join(config.sharedHome, "config.toml"));
+  });
+
+  it("promotes private grok rules dir into shared then symlinks all profiles", async () => {
+    const config = await testConfig();
+    const a = await ensureProfile(config, "acc-a");
+    const b = await ensureProfile(config, "acc-b");
+    await mkdir(config.sharedHome, { recursive: true });
+    await mkdir(join(a, "rules"), { recursive: true });
+    await writeFile(join(a, "rules", "ponytail.md"), "always-on\n");
+    await mkdir(join(b, "rules"), { recursive: true });
+    await writeFile(join(b, "rules", "caveman.md"), "terse\n");
+
+    await linkSharedProfile(config, a, "grok");
+    await linkSharedProfile(config, b, "grok");
+
+    expect((await lstat(join(a, "rules"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(b, "rules"))).isSymbolicLink()).toBe(true);
+    expect(await readlink(join(a, "rules"))).toBe(join(config.sharedHome, "rules"));
+    expect(await readFile(join(config.sharedHome, "rules", "ponytail.md"), "utf8")).toBe("always-on\n");
+    expect(await readFile(join(config.sharedHome, "rules", "caveman.md"), "utf8")).toBe("terse\n");
   });
 
   it("promotes private grok install dirs into shared then symlinks all profiles", async () => {

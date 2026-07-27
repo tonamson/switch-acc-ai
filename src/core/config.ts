@@ -29,6 +29,7 @@ export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
     "marketplace-cache",
     "plugins",
     "agents",
+    "rules",
     "AGENTS.md",
     "RTK.md",
     "trusted_folders.toml",
@@ -41,6 +42,7 @@ export const SHARED_DIR_ASSETS: ReadonlySet<string> = new Set([
   "plugins",
   "sessions",
   "agents",
+  "rules",
   "installed-plugins",
   "marketplace-cache",
 ]);
