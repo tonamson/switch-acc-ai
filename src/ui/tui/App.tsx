@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
 import { listAccounts } from '../../core/accounts.js';
 import { readAccountLabel as readCodexLabel, readRateLimits } from '../../core/codex.js';
@@ -7,6 +7,11 @@ import {
   readAccountLabel as readGrokLabel,
   readAuthStatus,
 } from '../../core/grok.js';
+import {
+  checkForUpdate,
+  getInstalledVersion,
+  type UpdateInfo,
+} from '../../core/update-check.js';
 import type { UsageMetric, UsageStatus } from '../../core/usage.js';
 import {
   formatUsageWindow,
@@ -157,6 +162,14 @@ export function App({
   const [error, setError] = useState<string | null>(null);
   const [codexCount, setCodexCount] = useState(0);
   const [grokCount, setGrokCount] = useState(0);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const currentVersion = useMemo(() => {
+    try {
+      return getInstalledVersion();
+    } catch {
+      return '?';
+    }
+  }, []);
   const finish = (action: Action) => {
     onAction(action);
     exit();
@@ -186,6 +199,22 @@ export function App({
       refreshAccounts(provider).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
     }
   }, [config, provider]);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkForUpdate()
+      .then((info) => {
+        if (!cancelled && info?.updateAvailable) {
+          setUpdateInfo(info);
+        }
+      })
+      .catch(() => {
+        // Update check is best-effort; never break the TUI.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadList = async () => {
     const names = await refreshAccounts();
@@ -471,6 +500,27 @@ export function App({
   };
 
   return <Box flexDirection="column" width={layoutWidth} marginLeft={leftMargin} paddingX={2} paddingY={1}>
+    <Box justifyContent="space-between" marginBottom={1}>
+      <Text>
+        <Text bold color="cyan">sacc</Text>
+        <Text color="gray">  v{currentVersion}</Text>
+      </Text>
+      {updateInfo ? (
+        <Text color="yellow">update {updateInfo.latestVersion}</Text>
+      ) : null}
+    </Box>
+    {updateInfo ? (
+      <Box marginBottom={1} borderStyle="round" borderColor="yellow" paddingX={1}>
+        <Text>
+          <Text color="yellow" bold>update available</Text>
+          <Text color="gray">  {updateInfo.currentVersion}</Text>
+          <Text color="gray"> → </Text>
+          <Text color="green" bold>{updateInfo.latestVersion}</Text>
+          <Text color="gray">  ·  run </Text>
+          <Text color="cyan" bold>sacc update</Text>
+        </Text>
+      </Box>
+    ) : null}
     <Box flexDirection="row" minHeight={14}>
       <Box width={25} flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginRight={1}>
         <Text color="gray">MENU</Text>
