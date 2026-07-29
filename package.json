@@ -1,7 +1,21 @@
 {
   "name": "switch-acc-ai",
   "version": "0.2.12",
-  "description": "Switch Codex and Grok accounts with isolated CLI home profiles.",
+  "description": "Switch Codex and Grok CLI accounts on one machine — isolated profiles, shared skills/sessions, official CLIs only.",
+  "keywords": [
+    "codex",
+    "grok",
+    "openai",
+    "xai",
+    "cli",
+    "accounts",
+    "switcher",
+    "multi-account",
+    "CODEX_HOME",
+    "GROK_HOME",
+    "sacc",
+    "ai-cli"
+  ],
   "type": "module",
   "bin": {
     "sacc": "dist/bin/sacc.js"
