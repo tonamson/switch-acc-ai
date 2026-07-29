@@ -306,7 +306,7 @@ function createProgram(options: CreateProgramOptions = {}): Command {
 
   program
     .name("sacc")
-    .description("Multi-provider AI account switcher (Codex + Grok)")
+    .description("Multi-provider AI CLI account switcher (Codex, Grok, more coming)")
     .helpOption("-h, --help", "show help")
     .showHelpAfterError(false)
     .exitOverride();

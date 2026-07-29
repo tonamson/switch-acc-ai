@@ -14,7 +14,7 @@
 
 <p align="center">
   <strong>One machine. Many AI CLI accounts. Zero mixed auth.</strong><br/>
-  Isolated profiles for <b>Codex</b> (OpenAI) &amp; <b>Grok</b> (xAI) — official CLIs only.
+  Multi-provider profile switcher for official AI CLIs — isolate auth, share skills &amp; sessions.
 </p>
 
 <p align="center">
@@ -37,27 +37,39 @@
 
 ## Why
 
-You run **Codex** and/or **Grok** on one laptop. Multiple personal logins. One shared `~/.codex` or `~/.grok` **mixes cookies, sessions, and auth**.
+You use more than one AI coding CLI — and often more than one **personal** login per tool. Default homes (`~/.codex`, `~/.grok`, `~/.claude`, …) **mix cookies, sessions, and auth** when you re-login.
 
-**`sacc`** keeps each account in its own home profile, then launches the **official** CLI:
+**`sacc`** is a **multi-provider account switcher**: each login gets an isolated profile home, shared skills/plugins/sessions stay linked, then the **official** CLI runs under that home.
 
 | Problem | What `sacc` does |
 |---------|------------------|
-| Auth / sessions bleed across logins | Isolated `CODEX_HOME` / `GROK_HOME` per profile |
+| Auth / sessions bleed across logins | Isolated per-provider profile dirs (`*_HOME` / equivalent) |
 | Skills & plugins reinstalled every switch | Shared assets symlinked into every profile |
-| Lost threads after switch | Shared `sessions/` + resume index repair |
-| “Which account is left this week?” | Unified usage status (5h / weekly / monthly) |
+| Lost threads after switch | Shared `sessions/` + provider-specific resume repair |
+| “Which account is left this week?” | Unified usage status (where the provider exposes it) |
 
 Not a proxy. Not multi-key rotation. **Personal profile switcher** for people who own their own accounts.
+
+### Providers
+
+| Provider | CLI | Status |
+|----------|-----|--------|
+| **Codex** (OpenAI) | `codex` | ✅ Supported |
+| **Grok** (xAI) | `grok` | ✅ Supported |
+| **Claude** (Anthropic) | `claude` | 🔜 Planned |
+| Others (Gemini, …) | official CLIs | 💭 Backlog |
+
+Same product idea for every provider: **isolate auth, share config assets, launch the real CLI.**
 
 ---
 
 ## Features
 
-- **Codex + Grok** in one tool (`sacc` / TUI)
+- **Multi-provider** — one `sacc` / TUI for all supported CLIs
+- **Codex + Grok today** — Claude and more on the roadmap
 - **Isolated profiles** — login once per name, switch anytime
 - **Official CLIs only** — no MITM, no third-party OAuth siphon
-- **Shared skills, plugins, rules, sessions** across your profiles
+- **Shared skills, plugins, rules, sessions** across your profiles (per provider)
 - **Session resume after switch** (Codex SQLite index + Grok FS layout)
 - **Usage status** — rate limits / credits in one view
 - **Interactive TUI** + scriptable CLI
@@ -109,7 +121,7 @@ Flow:
 
 ```text
   sacc
-    ├─ pick provider (codex | grok)
+    ├─ pick provider (codex | grok | …)
     ├─ list / login / rename / remove
     ├─ status (usage windows)
     └─ run → official CLI with isolated home
@@ -160,7 +172,9 @@ Flow:
 
 ## How it works
 
-`sacc` does **not** replace auth. It sets a dedicated home, links shared assets, repairs resume indexes, then `spawn`s the real CLI.
+`sacc` does **not** replace auth. Per provider it sets a dedicated home, links shared assets, repairs resume indexes when needed, then `spawn`s the real CLI.
+
+### Supported today
 
 | | **Codex** | **Grok** |
 |---|-----------|----------|
@@ -177,6 +191,8 @@ Flow:
            └─ sessions/, skills/, …  ──symlink──►  ~/.codex/
 ```
 
+Same pattern for every future provider (e.g. Claude → isolated profile home + shared skills/sessions + official `claude`).
+
 Override paths if needed:
 
 ```bash
@@ -192,12 +208,12 @@ export GROK_SHARED_HOME=...
 
 | ✅ This is | ❌ This is not |
 |------------|----------------|
-| Personal multi-profile manager | Account sharing / credential rental |
-| Launcher for **official** Codex & Grok CLIs | API proxy / multi-key round-robin |
+| Multi-provider **personal** profile manager | Account sharing / credential rental |
+| Launcher for **official** AI CLIs (per provider) | API proxy / multi-key round-robin |
 | Isolation so auth & sessions don’t mix | Bypass of provider rate limits |
-| Open source (MIT) | A replacement for provider ToS |
+| Extensible — more CLIs over time | A replacement for provider ToS |
 
-You use **your** accounts. Each profile stays yours. Follow [OpenAI](https://openai.com/policies/) and [xAI](https://x.ai/legal/) terms for multi-account and usage limits.
+You use **your** accounts. Each profile stays yours. Follow each provider’s terms ([OpenAI](https://openai.com/policies/), [xAI](https://x.ai/legal/), Anthropic, …) for multi-account and usage limits.
 
 ---
 
@@ -246,6 +262,18 @@ node dist/bin/sacc.js
 | `npm run build` | Compile TypeScript → `dist/` |
 | `npm test` | Vitest |
 | `npm run typecheck` | `tsc --noEmit` |
+
+---
+
+## Roadmap
+
+- [x] Codex (OpenAI) profiles + usage + session resume repair  
+- [x] Grok (xAI) profiles + usage + session resume repair  
+- [ ] Claude Code (`claude`) profiles — same isolation model  
+- [ ] More official AI CLIs as demand shows up  
+- [ ] Provider-agnostic polish (TUI, status, docs)
+
+Want a provider next? [Open an issue](https://github.com/tonamson/switch-acc-ai/issues).
 
 ---
 
