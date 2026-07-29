@@ -109,6 +109,21 @@ describe("account filesystem operations", () => {
     expect(await listAccounts(config)).toEqual([]);
   });
 
+  it("keeps a removed account hidden if another process recreates its directory", async () => {
+    const config = await testConfig();
+    const profile = await ensureProfile(config, "acc2");
+
+    await removeAccount(config, "acc2");
+    await mkdir(profile, { recursive: true });
+    await writeFile(join(profile, "auth.json"), "{}");
+
+    expect(await listAccounts(config)).toEqual([]);
+    await expect(requireProfile(config, "acc2")).rejects.toThrow("account not found: acc2");
+
+    await ensureProfile(config, "acc2");
+    expect(await listAccounts(config)).toEqual(["acc2"]);
+  });
+
   it("links shared profile assets when missing", async () => {
     const config = await testConfig();
     const profile = await ensureProfile(config, "acc2");

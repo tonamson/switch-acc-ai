@@ -10,6 +10,7 @@ import {
   rm,
   stat,
   symlink,
+  writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { ProviderConfig } from "./config.js";
@@ -29,6 +30,11 @@ function ensureValidAccountName(name: string): void {
 function profileDir(config: ProviderConfig, name: string): string {
   ensureValidAccountName(name);
   return join(config.accountsDir, name);
+}
+
+function removedMarker(config: ProviderConfig, name: string): string {
+  ensureValidAccountName(name);
+  return join(config.accountsDir, ".removed", name);
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -58,7 +64,11 @@ export async function listAccounts(config: ProviderConfig): Promise<string[]> {
   const entries = await readdir(config.accountsDir, { withFileTypes: true });
   const accounts = [];
   for (const entry of entries) {
-    if (!isValidAccountName(entry.name)) {
+    if (
+      entry.name === ".removed" ||
+      !isValidAccountName(entry.name) ||
+      (await pathExists(removedMarker(config, entry.name)))
+    ) {
       continue;
     }
     try {
@@ -80,6 +90,11 @@ export async function listAccounts(config: ProviderConfig): Promise<string[]> {
 
 export async function ensureProfile(config: ProviderConfig, name: string): Promise<string> {
   const dir = profileDir(config, name);
+  const marker = removedMarker(config, name);
+  if (await pathExists(marker)) {
+    await rm(dir, { recursive: true, force: true });
+    await rm(marker, { force: true });
+  }
   const existed = await pathExists(dir);
   await mkdir(dir, { recursive: true });
   logInfo("ensure profile", {
@@ -94,6 +109,9 @@ export async function ensureProfile(config: ProviderConfig, name: string): Promi
 
 export async function requireProfile(config: ProviderConfig, name: string): Promise<string> {
   const dir = profileDir(config, name);
+  if (await pathExists(removedMarker(config, name))) {
+    throw new Error(`account not found: ${name}`);
+  }
   try {
     const fileStat = await stat(dir);
     if (fileStat.isDirectory()) {
@@ -179,6 +197,8 @@ export async function removeAccount(config: ProviderConfig, name: string): Promi
   try {
     const dir = await requireProfile(config, name);
     await rm(dir, { recursive: true, force: true });
+    await mkdir(join(config.accountsDir, ".removed"), { recursive: true });
+    await writeFile(removedMarker(config, name), "");
     logInfo("remove ok", {
       account: name,
       profilePath: dir,
