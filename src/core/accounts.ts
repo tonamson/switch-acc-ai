@@ -1,4 +1,4 @@
-import { constants, watch, type FSWatcher } from "node:fs";
+import { constants, existsSync, watch, type FSWatcher } from "node:fs";
 import {
   access,
   copyFile,
@@ -12,10 +12,28 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import type { ProviderConfig } from "./config.js";
 import { SHARED_ASSETS, SHARED_DIR_ASSETS, type ProviderId } from "./config.js";
 import { logDebug, logException, logInfo, logWarn, serializeError } from "./log.js";
+
+// Vitest/Vite rewrites `import "node:sqlite"` to bare `sqlite` and fails.
+// createRequire keeps the Node built-in load path intact.
+const require = createRequire(import.meta.url);
+type DatabaseSyncInstance = {
+  prepare: (sql: string) => {
+    all: (...params: unknown[]) => unknown[];
+    get: (...params: unknown[]) => unknown;
+    run: (...params: unknown[]) => unknown;
+  };
+  exec: (sql: string) => void;
+  close: () => void;
+};
+type DatabaseSyncCtor = new (path: string) => DatabaseSyncInstance;
+function getDatabaseSync(): DatabaseSyncCtor {
+  return (require("node:sqlite") as { DatabaseSync: DatabaseSyncCtor }).DatabaseSync;
+}
 
 export function isValidAccountName(name: string): boolean {
   return name.trim() !== "" && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\0");
@@ -214,21 +232,43 @@ export async function removeAccount(config: ProviderConfig, name: string): Promi
 }
 
 /**
- * Move unique children from a private profile dir into shared, then drop private.
- * Shared wins on name conflicts (canonical global).
+ * Move unique children from a private profile dir into shared.
+ * Shared wins on file name conflicts. When both sides have a real directory
+ * with the same name, recurse so nested session trees (Grok cwd/uuid, Codex
+ * year/month/day rollouts) are not dropped.
  */
 async function mergeDirIntoShared(from: string, to: string): Promise<number> {
   await mkdir(to, { recursive: true });
   let moved = 0;
-  const entries = await readdir(from, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await readdir(from, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
   for (const entry of entries) {
     const src = join(from, entry.name);
     const dst = join(to, entry.name);
-    if (await pathExistsOrSymlink(dst)) {
+    if (!(await pathExistsOrSymlink(dst))) {
+      await rename(src, dst);
+      moved += 1;
       continue;
     }
-    await rename(src, dst);
-    moved += 1;
+    try {
+      const srcStat = await lstat(src);
+      const dstStat = await lstat(dst);
+      if (
+        srcStat.isDirectory() &&
+        !srcStat.isSymbolicLink() &&
+        dstStat.isDirectory() &&
+        !dstStat.isSymbolicLink()
+      ) {
+        moved += await mergeDirIntoShared(src, dst);
+      }
+      // else: shared already has this name — keep shared
+    } catch {
+      // skip one entry
+    }
   }
   return moved;
 }
@@ -357,6 +397,364 @@ async function ensureSharedAssetLink(
   }
 }
 
+/**
+ * Codex resume (picker / `codex resume`) indexes threads in `state_5.sqlite`.
+ * Session rollouts live under `sessions/` (shared across profiles via symlink),
+ * but the SQLite index stays private per CODEX_HOME — and stores absolute paths.
+ *
+ * After account rename/switch, those paths often still point at a deleted profile
+ * (e.g. `~/.codex-accounts/acc2/sessions/...`) even though the rollout file
+ * remains reachable via the current profile's `sessions` symlink. Repair:
+ * 1) seed/merge rows from shared `~/.codex/state_5.sqlite` when useful
+ * 2) rewrite `rollout_path` to the current profile's sessions tree when the file exists there
+ *
+ * Do NOT symlink state_5.sqlite — SQLite WAL next to a symlink is unsafe.
+ */
+function sessionsRelativePath(rolloutPath: string): string | null {
+  const normalized = rolloutPath.replace(/\\/g, "/");
+  const marker = "/sessions/";
+  const idx = normalized.lastIndexOf(marker);
+  if (idx === -1) {
+    return null;
+  }
+  const rel = normalized.slice(idx + marker.length);
+  return rel.length > 0 ? rel : null;
+}
+
+function openStateDb(dbPath: string): DatabaseSyncInstance | null {
+  try {
+    const DatabaseSync = getDatabaseSync();
+    return new DatabaseSync(dbPath);
+  } catch (error) {
+    logDebug("open state db failed", { dbPath, error: serializeError(error) });
+    return null;
+  }
+}
+
+function listThreadColumns(db: DatabaseSyncInstance): string[] {
+  const rows = db.prepare("PRAGMA table_info(threads)").all() as Array<{ name: string }>;
+  return rows.map((row) => row.name);
+}
+
+function mergeThreadsFromDb(fromPath: string, toPath: string): number {
+  const toDb = openStateDb(toPath);
+  if (!toDb) {
+    return 0;
+  }
+  try {
+    const fromDb = openStateDb(fromPath);
+    if (!fromDb) {
+      return 0;
+    }
+    let fromCols: string[];
+    try {
+      fromCols = listThreadColumns(fromDb);
+      if (fromCols.length === 0) {
+        return 0;
+      }
+    } finally {
+      fromDb.close();
+    }
+
+    const toCols = listThreadColumns(toDb);
+    if (toCols.length === 0) {
+      return 0;
+    }
+    const common = toCols.filter((col) => fromCols.includes(col));
+    if (!common.includes("id") || !common.includes("rollout_path")) {
+      return 0;
+    }
+    const colList = common.map((col) => `"${col.replace(/"/g, '""')}"`).join(", ");
+    const escapedFrom = fromPath.replace(/'/g, "''");
+    toDb.exec(`ATTACH DATABASE '${escapedFrom}' AS src`);
+    try {
+      const before = (
+        toDb.prepare("SELECT COUNT(*) AS c FROM threads").get() as { c: number }
+      ).c;
+      toDb.exec(
+        `INSERT OR IGNORE INTO threads (${colList}) SELECT ${colList} FROM src.threads`,
+      );
+      const after = (
+        toDb.prepare("SELECT COUNT(*) AS c FROM threads").get() as { c: number }
+      ).c;
+      return Math.max(0, after - before);
+    } finally {
+      try {
+        toDb.exec("DETACH DATABASE src");
+      } catch {
+        // ignore detach errors
+      }
+    }
+  } catch (error) {
+    logWarn("merge threads failed", {
+      fromPath,
+      toPath,
+      error: serializeError(error),
+    });
+    return 0;
+  } finally {
+    toDb.close();
+  }
+}
+
+function rewriteThreadRolloutPaths(profilePath: string): number {
+  const dbPath = join(profilePath, "state_5.sqlite");
+  if (!existsSync(dbPath)) {
+    return 0;
+  }
+  const sessionsRoot = join(profilePath, "sessions");
+  const db = openStateDb(dbPath);
+  if (!db) {
+    return 0;
+  }
+  let fixed = 0;
+  try {
+    const rows = db
+      .prepare("SELECT id, rollout_path FROM threads")
+      .all() as Array<{ id: string; rollout_path: string }>;
+    const update = db.prepare("UPDATE threads SET rollout_path = ? WHERE id = ?");
+    for (const row of rows) {
+      const rel = sessionsRelativePath(row.rollout_path);
+      if (!rel) {
+        continue;
+      }
+      const candidate = join(sessionsRoot, rel);
+      if (candidate === row.rollout_path || !existsSync(candidate)) {
+        continue;
+      }
+      update.run(candidate, row.id);
+      fixed += 1;
+    }
+  } catch (error) {
+    logWarn("rewrite rollout paths failed", {
+      profilePath,
+      error: serializeError(error),
+    });
+    return fixed;
+  } finally {
+    db.close();
+  }
+  return fixed;
+}
+
+export async function repairCodexResumeIndex(
+  profilePath: string,
+  sharedHome: string,
+  options: { siblingStatePaths?: string[] } = {},
+): Promise<{ seeded: boolean; merged: number; rewritten: number }> {
+  const profileState = join(profilePath, "state_5.sqlite");
+  const sharedState = join(sharedHome, "state_5.sqlite");
+  let seeded = false;
+  let merged = 0;
+
+  // Never keep a profile state DB as a symlink into shared (WAL hazard).
+  if (await pathExistsOrSymlink(profileState)) {
+    try {
+      if ((await lstat(profileState)).isSymbolicLink()) {
+        const linkTarget = await readlink(profileState);
+        logWarn("profile state_5.sqlite is a symlink; replacing with a real copy", {
+          profileState,
+          linkTarget,
+        });
+        await rm(profileState, { force: true });
+        if (await pathExistsOrSymlink(sharedState)) {
+          await copyFile(sharedState, profileState);
+          seeded = true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const sharedExists = await pathExistsOrSymlink(sharedState);
+  const siblingSources = options.siblingStatePaths ?? [];
+
+  if (!(await pathExistsOrSymlink(profileState))) {
+    const seedFrom = sharedExists
+      ? sharedState
+      : siblingSources.find((path) => existsSync(path));
+    if (seedFrom) {
+      await copyFile(seedFrom, profileState);
+      seeded = true;
+      logInfo("seeded codex state_5.sqlite", { profileState, seedFrom });
+    }
+  }
+
+  // Pull thread index rows from shared home + other profiles (sessions are shared).
+  const mergeSources = [
+    ...(sharedExists ? [sharedState] : []),
+    ...siblingSources,
+  ];
+  if (await pathExistsOrSymlink(profileState)) {
+    for (const source of mergeSources) {
+      try {
+        if (!existsSync(source)) {
+          continue;
+        }
+        const pStat = await stat(profileState);
+        const sStat = await stat(source);
+        if (pStat.ino === sStat.ino && pStat.dev === sStat.dev) {
+          continue;
+        }
+        const n = mergeThreadsFromDb(source, profileState);
+        if (n > 0) {
+          merged += n;
+          logInfo("merged state threads into profile", {
+            profileState,
+            source,
+            merged: n,
+          });
+        }
+      } catch (error) {
+        logDebug("state merge skipped", { source, error: serializeError(error) });
+      }
+    }
+  }
+
+  const rewritten = rewriteThreadRolloutPaths(profilePath);
+  if (rewritten > 0) {
+    logInfo("rewrote stale codex rollout paths", { profilePath, rewritten });
+  }
+  return { seeded, merged, rewritten };
+}
+
+async function isPrivateRealDir(path: string): Promise<boolean> {
+  try {
+    const st = await lstat(path);
+    return st.isDirectory() && !st.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Grok resume/list scans `sessions/<url-encoded-cwd>/<session-id>/` on disk.
+ * No Codex-style SQLite index — repair is filesystem only:
+ * 1) fold private session trees into global `sharedHome/sessions` (nested merge)
+ * 2) fold leftover private trees from sibling profiles
+ * 3) force profile `sessions` → symlink to shared
+ */
+export async function repairGrokSessions(
+  profilePath: string,
+  sharedHome: string,
+  options: { siblingSessionPaths?: string[] } = {},
+): Promise<{ mergedSessions: number; linked: boolean; action: string }> {
+  const sharedSessions = join(sharedHome, "sessions");
+  const profileSessions = join(profilePath, "sessions");
+  await mkdir(sharedHome, { recursive: true });
+  await mkdir(sharedSessions, { recursive: true });
+
+  let mergedSessions = 0;
+  let action = "already_linked";
+
+  try {
+    const st = await lstat(profileSessions);
+    if (st.isSymbolicLink()) {
+      const target = await readlink(profileSessions);
+      if (target !== sharedSessions) {
+        await rm(profileSessions, { force: true });
+        action = "replaced_wrong_link";
+      }
+    } else if (st.isDirectory()) {
+      mergedSessions += await mergeDirIntoShared(profileSessions, sharedSessions);
+      await rm(profileSessions, { recursive: true, force: true });
+      action = mergedSessions > 0 ? "merged_private_and_linked" : "replaced_private_dir";
+    } else {
+      await rm(profileSessions, { force: true });
+      action = "replaced_non_dir";
+    }
+  } catch {
+    action = "create_link";
+  }
+
+  for (const sibling of options.siblingSessionPaths ?? []) {
+    if (sibling === profileSessions || sibling === sharedSessions) {
+      continue;
+    }
+    if (!(await isPrivateRealDir(sibling))) {
+      continue;
+    }
+    const n = await mergeDirIntoShared(sibling, sharedSessions);
+    if (n > 0) {
+      mergedSessions += n;
+      logInfo("merged sibling private grok sessions into shared", {
+        sibling,
+        sharedSessions,
+        moved: n,
+      });
+      try {
+        await rm(sibling, { recursive: true, force: true });
+        await symlink(sharedSessions, sibling);
+      } catch (error) {
+        logDebug("sibling sessions re-link skipped", {
+          sibling,
+          error: serializeError(error),
+        });
+      }
+    }
+  }
+
+  try {
+    const st = await lstat(profileSessions);
+    if (!(st.isSymbolicLink() && (await readlink(profileSessions)) === sharedSessions)) {
+      await rm(profileSessions, { recursive: true, force: true });
+      await symlink(sharedSessions, profileSessions);
+      if (action === "already_linked") {
+        action = "relinked";
+      }
+    }
+  } catch {
+    await symlink(sharedSessions, profileSessions);
+    if (action === "already_linked") {
+      action = "create_link";
+    }
+  }
+
+  if (mergedSessions > 0 || action !== "already_linked") {
+    logInfo("repaired grok sessions tree", {
+      profilePath,
+      sharedSessions,
+      mergedSessions,
+      action,
+    });
+  }
+  return {
+    mergedSessions,
+    linked: true,
+    action,
+  };
+}
+
+async function listSiblingAccountPaths(
+  accountsDir: string,
+  profilePath: string,
+  leaf: string,
+): Promise<string[]> {
+  const out: string[] = [];
+  try {
+    const entries = await readdir(accountsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+        continue;
+      }
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+      const candidate = join(accountsDir, entry.name, leaf);
+      if (candidate === join(profilePath, leaf)) {
+        continue;
+      }
+      if (await pathExistsOrSymlink(candidate)) {
+        out.push(candidate);
+      }
+    }
+  } catch {
+    // accountsDir may be missing in unit tests
+  }
+  return out;
+}
+
 export async function linkSharedProfile(
   config: ProviderConfig,
   profilePath: string,
@@ -396,6 +794,43 @@ export async function linkSharedProfile(
       sharedHome: config.sharedHome,
       expectedAssets: [...SHARED_ASSETS[provider]],
     });
+  }
+
+  // Provider-specific resume repair — structures differ (see config SHARED_ASSETS docs).
+  if (provider === "codex") {
+    try {
+      const siblingStatePaths = await listSiblingAccountPaths(
+        config.accountsDir,
+        profilePath,
+        "state_5.sqlite",
+      );
+      const repair = await repairCodexResumeIndex(profilePath, config.sharedHome, {
+        siblingStatePaths,
+      });
+      details.push({ asset: "state_5.sqlite", kind: "resume_index_repair", ...repair });
+    } catch (error) {
+      logWarn("codex resume index repair failed", {
+        profilePath,
+        error: serializeError(error),
+      });
+    }
+  } else if (provider === "grok") {
+    try {
+      const siblingSessionPaths = await listSiblingAccountPaths(
+        config.accountsDir,
+        profilePath,
+        "sessions",
+      );
+      const repair = await repairGrokSessions(profilePath, config.sharedHome, {
+        siblingSessionPaths,
+      });
+      details.push({ asset: "sessions", kind: "grok_sessions_repair", ...repair });
+    } catch (error) {
+      logWarn("grok sessions repair failed", {
+        profilePath,
+        error: serializeError(error),
+      });
+    }
   }
 }
 

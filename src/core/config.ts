@@ -18,6 +18,12 @@ export type AppConfig = {
  * Auth stays private (auth.json, etc.); these are install/config/session assets.
  *
  * Grok layout uses `installed-plugins` (not Codex's `plugins`).
+ *
+ * Sessions (provider repairs differ — do not share one fix path):
+ * - Both share `sessions/` under the global home.
+ * - Codex: private `state_5.sqlite` index + absolute paths → `repairCodexResumeIndex`.
+ * - Grok: FS layout `sessions/<cwd>/<id>/` only → `repairGrokSessions` (nested
+ *   merge private trees + force symlink; no SQLite).
  */
 export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
   codex: ["skills", "plugins", "sessions", "config.toml"],
