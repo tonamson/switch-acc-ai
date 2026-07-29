@@ -1,20 +1,14 @@
-```text
-  ╔══════════════════════════════════════════╗
-  ║  █████╗ █████╗  █████╗ █████╗            ║
-  ║  ██╔══╝██╔══██╗██╔═══╝██╔═══╝            ║
-  ║  █████╗███████║██║    ██║                ║
-  ║  ╚══██║██╔══██║██║    ██║                ║
-  ║  █████║██║  ██║╚█████╗╚█████╗  · a i ·   ║
-  ║  ╚════╝╚═╝  ╚═╝ ╚════╝ ╚════╝            ║
-  ║                                          ║
-  ║  01 00 10  01 10 00  01 10 00  01 00 11  ║
-  ╚══════════════════════════════════════════╝
-           s w i t c h · a c c · a i
-```
+<p align="center">
+  <img src="docs/assets/banner.jpg" alt="switch-acc-ai — one machine, many accounts" width="100%" />
+</p>
 
 <p align="center">
   <strong>One machine. Many AI CLI accounts. Zero mixed auth.</strong><br/>
   Multi-provider profile switcher for official AI CLIs — isolate auth, share skills &amp; sessions.
+</p>
+
+<p align="center">
+  <img src="docs/assets/logo.jpg" alt="sacc logo" width="120" />
 </p>
 
 <p align="center">
