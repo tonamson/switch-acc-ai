@@ -15,7 +15,7 @@ import {
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import type { ProviderConfig } from "./config.js";
-import { SHARED_ASSETS, SHARED_DIR_ASSETS, type ProviderId } from "./config.js";
+import { EFFECTIVE_HOME_SUBDIR, SHARED_ASSETS, SHARED_DIR_ASSETS, type ProviderId } from "./config.js";
 import { logDebug, logException, logInfo, logWarn, serializeError } from "./log.js";
 
 // Vitest/Vite rewrites `import "node:sqlite"` to bare `sqlite` and fails.
@@ -761,12 +761,14 @@ export async function linkSharedProfile(
   provider: ProviderId = "codex",
 ): Promise<void> {
   await mkdir(config.sharedHome, { recursive: true });
+  const homeDir = join(profilePath, EFFECTIVE_HOME_SUBDIR[provider]);
+  await mkdir(homeDir, { recursive: true });
   const details: Array<Record<string, unknown>> = [];
   const linked: string[] = [];
   const skipped: string[] = [];
   for (const assetName of SHARED_ASSETS[provider]) {
     const source = join(config.sharedHome, assetName);
-    const target = join(profilePath, basename(assetName));
+    const target = join(homeDir, basename(assetName));
 
     const sourceState = await ensureSharedSource(source, target, assetName);
     if (sourceState === "skip") {
@@ -844,9 +846,10 @@ async function sharedAssetLinkBroken(
   profilePath: string,
   provider: ProviderId,
 ): Promise<boolean> {
+  const homeDir = join(profilePath, EFFECTIVE_HOME_SUBDIR[provider]);
   for (const assetName of SHARED_ASSETS[provider]) {
     const source = join(config.sharedHome, assetName);
-    const target = join(profilePath, basename(assetName));
+    const target = join(homeDir, basename(assetName));
     if (!(await pathExistsOrSymlink(source))) {
       continue;
     }
@@ -919,8 +922,9 @@ export function watchSharedProfileLinks(
     }, debounceMs);
   };
 
+  const homeDir = join(profilePath, EFFECTIVE_HOME_SUBDIR[provider]);
   try {
-    watcher = watch(profilePath, (eventType, filename) => {
+    watcher = watch(homeDir, (eventType, filename) => {
       scheduleRelink(eventType, filename);
     });
     watcher.on("error", (error) => {

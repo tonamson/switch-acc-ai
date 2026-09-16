@@ -1,9 +1,8 @@
 import { select } from "@inquirer/prompts";
 import { listAccounts, removeAccount, renameAccount } from "../core/accounts.js";
-import { loginCodex, runCodex } from "../core/codex.js";
 import { getProvider, type AppConfig, type ProviderId } from "../core/config.js";
-import { loginGrok, runGrok } from "../core/grok.js";
 import { logException, logInfo } from "../core/log.js";
+import { loginProviderCli, runProviderCli } from "../core/providers.js";
 
 function resumePromptInput(): void {
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
@@ -37,14 +36,12 @@ async function runAccount(
   args: string[],
 ): Promise<number> {
   const providerConfig = getProvider(config, provider);
-  return provider === "codex"
-    ? runCodex(providerConfig, account, args)
-    : runGrok(providerConfig, account, args);
+  return runProviderCli(provider, providerConfig, account, args);
 }
 
 async function loginAccount(config: AppConfig, provider: ProviderId, name: string): Promise<number> {
   const providerConfig = getProvider(config, provider);
-  return provider === "codex" ? loginCodex(providerConfig, name) : loginGrok(providerConfig, name);
+  return loginProviderCli(provider, providerConfig, name);
 }
 
 export async function pickAndRunAccount(

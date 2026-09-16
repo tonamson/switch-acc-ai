@@ -1,12 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
 import { listAccounts } from '../../core/accounts.js';
-import { readAccountLabel as readCodexLabel, readRateLimits } from '../../core/codex.js';
 import { getProvider, type AppConfig, type ProviderId } from '../../core/config.js';
-import {
-  readAccountLabel as readGrokLabel,
-  readAuthStatus,
-} from '../../core/grok.js';
+import { readProviderLabel, readProviderStatus } from '../../core/providers.js';
 import {
   checkForUpdate,
   getInstalledVersion,
@@ -34,10 +30,17 @@ type StatusInfo = UsageStatus | { account: string; error: string };
 const PROVIDERS: { id: ProviderId; name: string; hint: string; enabled: boolean }[] = [
   { id: 'codex', name: 'Codex', hint: 'OpenAI Codex CLI profiles', enabled: true },
   { id: 'grok', name: 'Grok', hint: 'xAI Grok CLI profiles', enabled: true },
+  { id: 'antigravity', name: 'Antigravity', hint: 'Google Antigravity CLI (agy) profiles', enabled: true },
 ];
 
+const PROVIDER_NAMES: Record<ProviderId, string> = {
+  codex: 'Codex',
+  grok: 'Grok',
+  antigravity: 'Antigravity',
+};
+
 function menuItems(provider: ProviderId): { label: string; hint: string; value: MenuAction }[] {
-  const runLabel = provider === 'codex' ? 'Run Codex' : 'Run Grok';
+  const runLabel = `Run ${PROVIDER_NAMES[provider]}`;
   return [
     { label: runLabel, hint: 'Launch with a profile', value: 'run' },
     { label: 'Add account', hint: 'Sign in to a new profile', value: 'login' },
@@ -162,6 +165,7 @@ export function App({
   const [error, setError] = useState<string | null>(null);
   const [codexCount, setCodexCount] = useState(0);
   const [grokCount, setGrokCount] = useState(0);
+  const [antigravityCount, setAntigravityCount] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const currentVersion = useMemo(() => {
     try {
@@ -185,12 +189,14 @@ export function App({
   };
 
   const refreshDashboardCounts = async () => {
-    const [codexNames, grokNames] = await Promise.all([
+    const [codexNames, grokNames, antigravityNames] = await Promise.all([
       listAccounts(config.codex),
       listAccounts(config.grok),
+      listAccounts(config.antigravity),
     ]);
     setCodexCount(codexNames.length);
     setGrokCount(grokNames.length);
+    setAntigravityCount(antigravityNames.length);
   };
 
   useEffect(() => {
@@ -218,11 +224,10 @@ export function App({
 
   const loadList = async () => {
     const names = await refreshAccounts();
+    const providerConfig = getProvider(config, activeProvider);
     const infos = await Promise.all(names.map(async (name) => ({
       name,
-      label: activeProvider === 'codex'
-        ? await readCodexLabel(config.codex, name).catch(() => 'Not signed in')
-        : await readGrokLabel(config.grok, name).catch(() => 'Not signed in'),
+      label: await readProviderLabel(activeProvider, providerConfig, name).catch(() => 'Not signed in'),
     })));
     setAccountsInfo(infos);
     setDetailView('list');
@@ -230,11 +235,9 @@ export function App({
 
   const loadStatus = async () => {
     const names = await refreshAccounts();
+    const providerConfig = getProvider(config, activeProvider);
     const stats = await Promise.all(names.map((name) =>
-      (activeProvider === 'codex'
-        ? readRateLimits(config.codex, name)
-        : readAuthStatus(config.grok, name)
-      ).catch((err: unknown) => ({
+      readProviderStatus(activeProvider, providerConfig, name).catch((err: unknown) => ({
         account: name,
         error: err instanceof Error ? err.message : String(err),
       })),
@@ -418,8 +421,9 @@ export function App({
           <Text bold color="white">Provider dashboard</Text>
           <Text color="gray">Choose the AI CLI you want to manage.</Text>
           <Box marginTop={2} flexDirection="column">
-            <Text><Text color="gray">Codex profiles  </Text>{codexCount}</Text>
-            <Text><Text color="gray">Grok profiles   </Text>{grokCount}</Text>
+            <Text><Text color="gray">Codex profiles       </Text>{codexCount}</Text>
+            <Text><Text color="gray">Grok profiles        </Text>{grokCount}</Text>
+            <Text><Text color="gray">Antigravity profiles </Text>{antigravityCount}</Text>
           </Box>
         </Box>
       );

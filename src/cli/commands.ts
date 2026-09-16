@@ -7,24 +7,12 @@ import {
   requireProfile,
 } from "../core/accounts.js";
 import {
-  loginCodex,
-  readAccountLabel as readCodexLabel,
-  readRateLimits,
-  runCodex,
-} from "../core/codex.js";
-import {
   getProvider,
   isProviderId,
   resolveConfig,
   type AppConfig,
   type ProviderId,
 } from "../core/config.js";
-import {
-  loginGrok,
-  readAccountLabel as readGrokLabel,
-  readAuthStatus,
-  runGrok,
-} from "../core/grok.js";
 import {
   getSessionId,
   getTodayLogPath,
@@ -35,6 +23,12 @@ import {
   runtimeSnapshot,
   serializeError,
 } from "../core/log.js";
+import {
+  loginProviderCli,
+  readProviderLabel,
+  readProviderStatus,
+  runProviderCli,
+} from "../core/providers.js";
 import { checkForUpdate } from "../core/update-check.js";
 import {
   formatAccountsTable,
@@ -85,10 +79,7 @@ async function printList(config: AppConfig, provider: ProviderId): Promise<void>
   const rows = [];
   for (const name of await listAccounts(providerConfig)) {
     try {
-      const identity =
-        provider === "codex"
-          ? await readCodexLabel(providerConfig, name)
-          : await readGrokLabel(providerConfig, name);
+      const identity = await readProviderLabel(provider, providerConfig, name);
       rows.push({ profile: name, identity });
     } catch (error) {
       logWarn("list identity failed", {
@@ -122,10 +113,7 @@ async function printStatus(
     let failed = false;
     for (const name of await listAccounts(providerConfig)) {
       try {
-        const row =
-          provider === "codex"
-            ? await readRateLimits(providerConfig, name)
-            : await readAuthStatus(providerConfig, name);
+        const row = await readProviderStatus(provider, providerConfig, name);
         rows.push(row);
         logInfo("status account ok", {
           provider,
@@ -152,10 +140,7 @@ async function printStatus(
     throw new Error(`missing account name; use sacc ${provider} status <name> or sacc ${provider} status --all`);
   }
   try {
-    const row =
-      provider === "codex"
-        ? await readRateLimits(providerConfig, target)
-        : await readAuthStatus(providerConfig, target);
+    const row = await readProviderStatus(provider, providerConfig, target);
     logInfo("status ok", {
       provider,
       account: target,
@@ -179,10 +164,7 @@ async function runProvider(
   logInfo("run provider", { provider, account, args });
   const providerConfig = getProvider(config, provider);
   await requireProfile(providerConfig, account);
-  process.exitCode =
-    provider === "codex"
-      ? await runCodex(providerConfig, account, args)
-      : await runGrok(providerConfig, account, args);
+  process.exitCode = await runProviderCli(provider, providerConfig, account, args);
 }
 
 async function loginProvider(
@@ -193,10 +175,7 @@ async function loginProvider(
 ): Promise<void> {
   logInfo("login provider", { provider, account: name, loginArgs });
   const providerConfig = getProvider(config, provider);
-  process.exitCode =
-    provider === "codex"
-      ? await loginCodex(providerConfig, name)
-      : await loginGrok(providerConfig, name, loginArgs);
+  process.exitCode = await loginProviderCli(provider, providerConfig, name, loginArgs);
 }
 
 async function renameProvider(
@@ -231,10 +210,14 @@ async function removeProvider(
   }
 }
 
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  codex: "Codex",
+  grok: "Grok",
+  antigravity: "Antigravity",
+};
+
 function addProviderCommands(parent: Command, config: AppConfig, provider: ProviderId): void {
-  const cmd = parent
-    .command(provider)
-    .description(`${provider === "codex" ? "Codex" : "Grok"} account profiles`);
+  const cmd = parent.command(provider).description(`${PROVIDER_LABELS[provider]} account profiles`);
 
   cmd
     .command("login <name>")
@@ -334,6 +317,7 @@ function createProgram(options: CreateProgramOptions = {}): Command {
 
   addProviderCommands(program, config, "codex");
   addProviderCommands(program, config, "grok");
+  addProviderCommands(program, config, "antigravity");
 
   // Backward-compatible shortcuts default to Codex.
   program.command("login <name>").action(async (name: string) => {

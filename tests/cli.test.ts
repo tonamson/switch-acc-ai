@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeAll, describe, expect, it } from "vitest";
+import { writeFakeAntigravity } from "./helpers/fakeAntigravity.js";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
 import { writeFakeGrok } from "./helpers/fakeGrok.js";
 
@@ -17,6 +18,7 @@ beforeAll(async () => {
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   await writeFakeGrok(binDir);
+  await writeFakeAntigravity(binDir);
   await writeFile(
     join(binDir, "npm"),
     `#!/usr/bin/env bash
@@ -38,12 +40,17 @@ printf '%s\\n' "$*" > "$NPM_ARGS_LOG"
     GROK_ARGS_LOG: join(root, "grok-args.log"),
     GROK_LOGIN_LOG: join(root, "grok-login.log"),
     GROK_LOGIN_ARGS_LOG: join(root, "grok-login-args.log"),
+    ANTIGRAVITY_ACCOUNTS_DIR: join(root, "antigravity-accounts"),
+    ANTIGRAVITY_SHARED_HOME: join(root, "antigravity-shared"),
+    ANTIGRAVITY_HOME_LOG: join(root, "antigravity-home.log"),
+    ANTIGRAVITY_ARGS_LOG: join(root, "antigravity-args.log"),
     NPM_ARGS_LOG: join(root, "npm.log"),
     SACC_LOG_DIR: join(root, "sacc-logs"),
     NO_COLOR: "1",
   };
   await mkdir(env.CODEX_SHARED_HOME!, { recursive: true });
   await mkdir(env.GROK_SHARED_HOME!, { recursive: true });
+  await mkdir(env.ANTIGRAVITY_SHARED_HOME!, { recursive: true });
 });
 
 function run(args: string[], input?: string): string {
@@ -159,5 +166,17 @@ describe("sacc cli", () => {
     run(["codex", "login", "acc3"]);
     const output = run(["codex", "list"]);
     expect(output).toContain("acc3");
+  });
+
+  it("logs in and runs antigravity with a per-profile HOME override", async () => {
+    run(["antigravity", "login", "aw"]);
+    const output = run(["antigravity", "list"]);
+    expect(output).toContain("antigravity accounts");
+    expect(output).toContain("aw");
+
+    run(["antigravity", "aw", "-p", "hello"]);
+    expect((await readFile(env.ANTIGRAVITY_ARGS_LOG!, "utf8")).trim()).toBe("-p hello");
+    const home = (await readFile(env.ANTIGRAVITY_HOME_LOG!, "utf8")).trim();
+    expect(home).toContain("aw");
   });
 });

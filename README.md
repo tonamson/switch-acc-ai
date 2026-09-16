@@ -50,6 +50,7 @@ Not a proxy. Not multi-key rotation. **Personal profile switcher** for people wh
 |----------|-----|--------|
 | **Codex** (OpenAI) | `codex` | ✅ Supported |
 | **Grok** (xAI) | `grok` | ✅ Supported |
+| **Antigravity** (Google) | `agy` | ⚠️ Supported (best-effort auth isolation — see below) |
 | **Claude** (Anthropic) | `claude` | 🔜 Planned |
 | Others (Gemini, …) | official CLIs | 💭 Backlog |
 
@@ -84,6 +85,7 @@ npm install -g switch-acc-ai
 | Node.js **≥ 20** | Runtime for `sacc` |
 | [Codex CLI](https://github.com/openai/codex) | On `PATH` if you use Codex |
 | [Grok CLI](https://x.ai/cli) | On `PATH` if you use Grok |
+| [Antigravity CLI (`agy`)](https://antigravity.google/download) | On `PATH` if you use Antigravity |
 
 ```bash
 # Grok CLI (example)
@@ -170,13 +172,13 @@ Flow:
 
 ### Supported today
 
-| | **Codex** | **Grok** |
-|---|-----------|----------|
-| Profiles | `~/.codex-accounts/<name>` | `~/.grok-accounts/<name>` |
-| Shared home | `~/.codex` | `~/.grok` |
-| Env var | `CODEX_HOME` | `GROK_HOME` |
-| Private | Auth / tokens / per-account state | Auth / tokens / per-account state |
-| Shared (symlink) | `skills`, `plugins`, `sessions`, `config.toml` | `skills`, `sessions`, `rules`, `plugins`, `AGENTS.md`, … |
+| | **Codex** | **Grok** | **Antigravity** |
+|---|-----------|----------|------------------|
+| Profiles | `~/.codex-accounts/<name>` | `~/.grok-accounts/<name>` | `~/.antigravity-accounts/<name>` |
+| Shared home | `~/.codex` | `~/.grok` | `~/.gemini/antigravity-cli` |
+| Isolation | `CODEX_HOME` env var | `GROK_HOME` env var | `HOME` env var override (`agy` has no dedicated home env var — it always reads `$HOME/.gemini/antigravity-cli`) |
+| Private | Auth / tokens / per-account state | Auth / tokens / per-account state | Per-account config dir |
+| Shared (symlink) | `skills`, `plugins`, `sessions`, `config.toml` | `skills`, `sessions`, `rules`, `plugins`, `AGENTS.md`, … | `plugins`, `AGENTS.md` |
 
 ```text
   ~/.codex-accounts/work/     ──►  CODEX_HOME for "work"
@@ -187,6 +189,14 @@ Flow:
 
 Same pattern for every future provider (e.g. Claude → isolated profile home + shared skills/sessions + official `claude`).
 
+**Antigravity caveat:** `agy` stores its auth token in the OS keyring (Keychain / Secret Service /
+Credential Manager), not in a file under its config dir. `sacc` isolates the *config* per profile
+(via a per-profile `HOME`), but whether the keyring itself keeps separate credentials per profile
+is unverified — switching profiles may or may not switch the signed-in Google account depending on
+how `agy` keys its keyring entries. Treat multi-account Antigravity support as best-effort until
+confirmed. Usage/rate-limit status is also not exposed by the CLI, so `sacc antigravity status`
+always reports "not available".
+
 Override paths if needed:
 
 ```bash
@@ -194,6 +204,8 @@ export CODEX_ACCOUNTS_DIR=...
 export CODEX_SHARED_HOME=...
 export GROK_ACCOUNTS_DIR=...
 export GROK_SHARED_HOME=...
+export ANTIGRAVITY_ACCOUNTS_DIR=...
+export ANTIGRAVITY_SHARED_HOME=...
 ```
 
 ---
@@ -263,6 +275,7 @@ node dist/bin/sacc.js
 
 - [x] Codex (OpenAI) profiles + usage + session resume repair  
 - [x] Grok (xAI) profiles + usage + session resume repair  
+- [x] Antigravity (Google, `agy`) profiles — config isolated via `HOME`; auth isolation unverified (OS keyring)  
 - [ ] Claude Code (`claude`) profiles — same isolation model  
 - [ ] More official AI CLIs as demand shows up  
 - [ ] Provider-agnostic polish (TUI, status, docs)

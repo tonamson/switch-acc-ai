@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type ProviderId = "codex" | "grok";
+export type ProviderId = "codex" | "grok" | "antigravity";
 
 export type ProviderConfig = {
   accountsDir: string;
@@ -11,6 +11,7 @@ export type ProviderConfig = {
 export type AppConfig = {
   codex: ProviderConfig;
   grok: ProviderConfig;
+  antigravity: ProviderConfig;
 };
 
 /**
@@ -20,10 +21,17 @@ export type AppConfig = {
  * Grok layout uses `installed-plugins` (not Codex's `plugins`).
  *
  * Sessions (provider repairs differ — do not share one fix path):
- * - Both share `sessions/` under the global home.
+ * - Codex + Grok share `sessions/` under the global home.
  * - Codex: private `state_5.sqlite` index + absolute paths → `repairCodexResumeIndex`.
  * - Grok: FS layout `sessions/<cwd>/<id>/` only → `repairGrokSessions` (nested
  *   merge private trees + force symlink; no SQLite).
+ * - Antigravity (`agy`): no env var to redirect its config dir — it always reads
+ *   `$HOME/.gemini/antigravity-cli`, so isolation works by spawning with a
+ *   per-profile `HOME` override (see EFFECTIVE_HOME_SUBDIR). Auth itself lives in
+ *   the OS keyring, not a file under that dir, so per-profile auth isolation is
+ *   best-effort only — session/conversation state is intentionally NOT shared
+ *   (unverified whether its sqlite/proto state tolerates the same symlink tricks
+ *   as Codex's state_5.sqlite).
  */
 export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
   codex: ["skills", "plugins", "sessions", "config.toml"],
@@ -40,6 +48,7 @@ export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
     "RTK.md",
     "trusted_folders.toml",
   ],
+  antigravity: ["plugins", "AGENTS.md"],
 };
 
 /** Directory shared assets — create empty on shared home when missing so installs land in global. */
@@ -53,8 +62,20 @@ export const SHARED_DIR_ASSETS: ReadonlySet<string> = new Set([
   "marketplace-cache",
 ]);
 
+/**
+ * Path (relative to a profile dir) where the provider's own config actually lands.
+ * Codex/Grok are told their home directly via CODEX_HOME/GROK_HOME, so the profile
+ * dir IS that home. Antigravity has no such env var — it derives its config dir
+ * from the process `HOME`, nested under `.gemini/antigravity-cli`.
+ */
+export const EFFECTIVE_HOME_SUBDIR: Record<ProviderId, string> = {
+  codex: "",
+  grok: "",
+  antigravity: join(".gemini", "antigravity-cli"),
+};
+
 export function isProviderId(value: string): value is ProviderId {
-  return value === "codex" || value === "grok";
+  return value === "codex" || value === "grok" || value === "antigravity";
 }
 
 export function getProvider(config: AppConfig, id: ProviderId): ProviderConfig {
@@ -73,6 +94,11 @@ export function resolveConfig(
     grok: {
       accountsDir: env.GROK_ACCOUNTS_DIR || join(homeDir, ".grok-accounts"),
       sharedHome: env.GROK_SHARED_HOME || join(homeDir, ".grok"),
+    },
+    antigravity: {
+      accountsDir: env.ANTIGRAVITY_ACCOUNTS_DIR || join(homeDir, ".antigravity-accounts"),
+      sharedHome:
+        env.ANTIGRAVITY_SHARED_HOME || join(homeDir, ".gemini", "antigravity-cli"),
     },
   };
 }
