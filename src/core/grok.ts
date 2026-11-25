@@ -143,7 +143,7 @@ function waitForExitDetailed(
  * Drain buffered keypresses (e.g. the Enter that submitted the menu form)
  * so the child does not instantly consume them and bail out of login.
  */
-function prepareInteractiveChild(reason: string): void {
+export function prepareInteractiveChild(reason: string): void {
   const before = runtimeSnapshot();
   let drainedBytes = 0;
   let rawModeError: unknown = null;

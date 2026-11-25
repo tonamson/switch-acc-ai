@@ -50,7 +50,7 @@ Not a proxy. Not multi-key rotation. **Personal profile switcher** for people wh
 |----------|-----|--------|
 | **Codex** (OpenAI) | `codex` | ✅ Supported |
 | **Grok** (xAI) | `grok` | ✅ Supported |
-| **Claude** (Anthropic) | `claude` | 🔜 Planned |
+| **Claude** (Anthropic) | `claude` | ✅ Supported |
 | Others (Gemini, …) | official CLIs | 💭 Backlog |
 
 Same product idea for every provider: **isolate auth, share config assets, launch the real CLI.**
@@ -60,7 +60,7 @@ Same product idea for every provider: **isolate auth, share config assets, launc
 ## Features
 
 - **Multi-provider** — one `sacc` / TUI for all supported CLIs
-- **Codex + Grok today** — Claude and more on the roadmap
+- **Codex + Grok + Claude Code** — more providers on the roadmap
 - **Isolated profiles** — login once per name, switch anytime
 - **Official CLIs only** — no MITM, no third-party OAuth siphon
 - **Shared skills, plugins, rules, sessions** across your profiles (per provider)
@@ -161,6 +161,9 @@ Flow:
 | `sacc grok status <name>` | Usage: 5h / weekly / monthly |
 | `sacc status --all` | All Codex accounts |
 | `sacc grok status --all` | All Grok accounts |
+| `sacc claude <account> [args…]` | Run Claude Code under profile |
+| `sacc claude login <name>` | Sign in to a Claude profile |
+| `sacc claude status <name>` / `--all` | Usage: 5h / weekly (unofficial Anthropic endpoint, may change) |
 
 ---
 
@@ -170,13 +173,13 @@ Flow:
 
 ### Supported today
 
-| | **Codex** | **Grok** |
-|---|-----------|----------|
-| Profiles | `~/.codex-accounts/<name>` | `~/.grok-accounts/<name>` |
-| Shared home | `~/.codex` | `~/.grok` |
-| Env var | `CODEX_HOME` | `GROK_HOME` |
-| Private | Auth / tokens / per-account state | Auth / tokens / per-account state |
-| Shared (symlink) | `skills`, `plugins`, `sessions`, `config.toml` | `skills`, `sessions`, `rules`, `plugins`, `AGENTS.md`, … |
+| | **Codex** | **Grok** | **Claude** |
+|---|-----------|----------|------------|
+| Profiles | `~/.codex-accounts/<name>` | `~/.grok-accounts/<name>` | `~/.claude-accounts/<name>` |
+| Shared home | `~/.codex` | `~/.grok` | `~/.claude` |
+| Env var | `CODEX_HOME` | `GROK_HOME` | `CLAUDE_CONFIG_DIR` |
+| Private | Auth / tokens / per-account state | Auth / tokens / per-account state | Auth / tokens (`.credentials.json`, Keychain) |
+| Shared (symlink) | `skills`, `plugins`, `sessions`, `config.toml` | `skills`, `sessions`, `rules`, `plugins`, `AGENTS.md`, … | `skills`, `agents`, `commands`, `plugins`, `projects`, `settings.json`, `CLAUDE.md`, `rules` |
 
 ```text
   ~/.codex-accounts/work/     ──►  CODEX_HOME for "work"
@@ -185,7 +188,7 @@ Flow:
            └─ sessions/, skills/, …  ──symlink──►  ~/.codex/
 ```
 
-Same pattern for every future provider (e.g. Claude → isolated profile home + shared skills/sessions + official `claude`).
+Same pattern for every provider: isolated profile home + shared skills/sessions + the official CLI. For Claude, auth lives in the macOS Keychain keyed by profile path, so `rename`/`remove` also delete that Keychain item (re-login after a rename). `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` are stripped from the child env so every profile keeps its own login.
 
 Override paths if needed:
 
@@ -194,6 +197,8 @@ export CODEX_ACCOUNTS_DIR=...
 export CODEX_SHARED_HOME=...
 export GROK_ACCOUNTS_DIR=...
 export GROK_SHARED_HOME=...
+export CLAUDE_ACCOUNTS_DIR=...
+export CLAUDE_SHARED_HOME=...
 ```
 
 ---
@@ -263,7 +268,7 @@ node dist/bin/sacc.js
 
 - [x] Codex (OpenAI) profiles + usage + session resume repair  
 - [x] Grok (xAI) profiles + usage + session resume repair  
-- [ ] Claude Code (`claude`) profiles — same isolation model  
+- [x] Claude Code (`claude`) profiles + usage (5h / weekly)  
 - [ ] More official AI CLIs as demand shows up  
 - [ ] Provider-agnostic polish (TUI, status, docs)
 

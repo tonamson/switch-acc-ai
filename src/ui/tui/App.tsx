@@ -1,12 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
 import { listAccounts } from '../../core/accounts.js';
-import { readAccountLabel as readCodexLabel, readRateLimits } from '../../core/codex.js';
 import { getProvider, type AppConfig, type ProviderId } from '../../core/config.js';
-import {
-  readAccountLabel as readGrokLabel,
-  readAuthStatus,
-} from '../../core/grok.js';
+import { providers } from '../../core/providers.js';
 import {
   checkForUpdate,
   getInstalledVersion,
@@ -34,10 +30,11 @@ type StatusInfo = UsageStatus | { account: string; error: string };
 const PROVIDERS: { id: ProviderId; name: string; hint: string; enabled: boolean }[] = [
   { id: 'codex', name: 'Codex', hint: 'OpenAI Codex CLI profiles', enabled: true },
   { id: 'grok', name: 'Grok', hint: 'xAI Grok CLI profiles', enabled: true },
+  { id: 'claude', name: 'Claude', hint: 'Anthropic Claude Code profiles', enabled: true },
 ];
 
 function menuItems(provider: ProviderId): { label: string; hint: string; value: MenuAction }[] {
-  const runLabel = provider === 'codex' ? 'Run Codex' : 'Run Grok';
+  const runLabel = `Run ${providers[provider].label}`;
   return [
     { label: runLabel, hint: 'Launch with a profile', value: 'run' },
     { label: 'Add account', hint: 'Sign in to a new profile', value: 'login' },
@@ -162,6 +159,7 @@ export function App({
   const [error, setError] = useState<string | null>(null);
   const [codexCount, setCodexCount] = useState(0);
   const [grokCount, setGrokCount] = useState(0);
+  const [claudeCount, setClaudeCount] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const currentVersion = useMemo(() => {
     try {
@@ -185,12 +183,14 @@ export function App({
   };
 
   const refreshDashboardCounts = async () => {
-    const [codexNames, grokNames] = await Promise.all([
+    const [codexNames, grokNames, claudeNames] = await Promise.all([
       listAccounts(config.codex),
       listAccounts(config.grok),
+      listAccounts(config.claude),
     ]);
     setCodexCount(codexNames.length);
     setGrokCount(grokNames.length);
+    setClaudeCount(claudeNames.length);
   };
 
   useEffect(() => {
@@ -220,9 +220,7 @@ export function App({
     const names = await refreshAccounts();
     const infos = await Promise.all(names.map(async (name) => ({
       name,
-      label: activeProvider === 'codex'
-        ? await readCodexLabel(config.codex, name).catch(() => 'Not signed in')
-        : await readGrokLabel(config.grok, name).catch(() => 'Not signed in'),
+      label: await providers[activeProvider].readLabel(getProvider(config, activeProvider), name).catch(() => 'Not signed in'),
     })));
     setAccountsInfo(infos);
     setDetailView('list');
@@ -231,10 +229,7 @@ export function App({
   const loadStatus = async () => {
     const names = await refreshAccounts();
     const stats = await Promise.all(names.map((name) =>
-      (activeProvider === 'codex'
-        ? readRateLimits(config.codex, name)
-        : readAuthStatus(config.grok, name)
-      ).catch((err: unknown) => ({
+      providers[activeProvider].readUsage(getProvider(config, activeProvider), name).catch((err: unknown) => ({
         account: name,
         error: err instanceof Error ? err.message : String(err),
       })),
@@ -420,6 +415,7 @@ export function App({
           <Box marginTop={2} flexDirection="column">
             <Text><Text color="gray">Codex profiles  </Text>{codexCount}</Text>
             <Text><Text color="gray">Grok profiles   </Text>{grokCount}</Text>
+            <Text><Text color="gray">Claude profiles </Text>{claudeCount}</Text>
           </Box>
         </Box>
       );

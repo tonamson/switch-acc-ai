@@ -1,8 +1,7 @@
 import { select } from "@inquirer/prompts";
 import { listAccounts, removeAccount, renameAccount } from "../core/accounts.js";
-import { loginCodex, runCodex } from "../core/codex.js";
 import { getProvider, type AppConfig, type ProviderId } from "../core/config.js";
-import { loginGrok, runGrok } from "../core/grok.js";
+import { providers } from "../core/providers.js";
 import { logException, logInfo } from "../core/log.js";
 
 function resumePromptInput(): void {
@@ -37,14 +36,12 @@ async function runAccount(
   args: string[],
 ): Promise<number> {
   const providerConfig = getProvider(config, provider);
-  return provider === "codex"
-    ? runCodex(providerConfig, account, args)
-    : runGrok(providerConfig, account, args);
+  return providers[provider].run(providerConfig, account, args);
 }
 
 async function loginAccount(config: AppConfig, provider: ProviderId, name: string): Promise<number> {
   const providerConfig = getProvider(config, provider);
-  return provider === "codex" ? loginCodex(providerConfig, name) : loginGrok(providerConfig, name);
+  return providers[provider].login(providerConfig, name);
 }
 
 export async function pickAndRunAccount(
@@ -88,6 +85,7 @@ export async function openMainMenu(
     config: {
       codex: config.codex,
       grok: config.grok,
+      claude: config.claude,
     },
   });
 
@@ -159,6 +157,7 @@ export async function openMainMenu(
         to: action.newName,
         providerConfig: getProvider(config, action.provider),
       });
+      await providers[action.provider].forget?.(getProvider(config, action.provider), action.account);
       await renameAccount(getProvider(config, action.provider), action.account, action.newName);
       continue;
     }
@@ -169,6 +168,7 @@ export async function openMainMenu(
         account: action.account,
         providerConfig: getProvider(config, action.provider),
       });
+      await providers[action.provider].forget?.(getProvider(config, action.provider), action.account);
       await removeAccount(getProvider(config, action.provider), action.account);
       continue;
     }

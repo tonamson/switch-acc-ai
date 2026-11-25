@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeAll, describe, expect, it } from "vitest";
 import { writeFakeCodex } from "./helpers/fakeCodex.js";
+import { writeFakeClaude } from "./helpers/fakeClaude.js";
 import { writeFakeGrok } from "./helpers/fakeGrok.js";
 
 const repoRoot = process.cwd();
@@ -17,6 +18,7 @@ beforeAll(async () => {
   const binDir = join(root, "bin");
   await writeFakeCodex(binDir);
   await writeFakeGrok(binDir);
+  await writeFakeClaude(binDir);
   await writeFile(
     join(binDir, "npm"),
     `#!/usr/bin/env bash
@@ -38,12 +40,19 @@ printf '%s\\n' "$*" > "$NPM_ARGS_LOG"
     GROK_ARGS_LOG: join(root, "grok-args.log"),
     GROK_LOGIN_LOG: join(root, "grok-login.log"),
     GROK_LOGIN_ARGS_LOG: join(root, "grok-login-args.log"),
+    CLAUDE_ACCOUNTS_DIR: join(root, "claude-accounts"),
+    CLAUDE_SHARED_HOME: join(root, "claude-shared"),
+    CLAUDE_ACCOUNT_LOG: join(root, "claude-account.log"),
+    CLAUDE_ARGS_LOG: join(root, "claude-args.log"),
+    CLAUDE_LOGIN_LOG: join(root, "claude-login.log"),
+    CLAUDE_USAGE_URL: "http://127.0.0.1:9/usage",
     NPM_ARGS_LOG: join(root, "npm.log"),
     SACC_LOG_DIR: join(root, "sacc-logs"),
     NO_COLOR: "1",
   };
   await mkdir(env.CODEX_SHARED_HOME!, { recursive: true });
   await mkdir(env.GROK_SHARED_HOME!, { recursive: true });
+  await mkdir(env.CLAUDE_SHARED_HOME!, { recursive: true });
 });
 
 function run(args: string[], input?: string): string {
@@ -61,6 +70,7 @@ describe("sacc cli", () => {
     expect(output).toContain("Usage");
     expect(output).toContain("sacc pick [args]");
     expect(output).toContain("sacc grok login <name>");
+    expect(output).toContain("sacc claude login <name>");
     expect(output).toContain("sacc update");
     expect(output).toContain("sacc logs");
   });
@@ -121,6 +131,21 @@ describe("sacc cli", () => {
     expect(output).toContain("work");
     expect(output).toContain("work@example.com");
     expect((await readFile(env.GROK_LOGIN_LOG!, "utf8")).trim()).toContain("work");
+  });
+
+  it("logs in, lists, runs and shows status for claude accounts", async () => {
+    run(["claude", "login", "work"]);
+    const output = run(["claude", "list"]);
+    expect(output).toContain("claude accounts");
+    expect(output).toContain("work@example.com");
+    run(["claude", "work", "--model", "x"]);
+    expect((await readFile(env.CLAUDE_ARGS_LOG!, "utf8")).trim()).toBe("--model x");
+    const status = run(["claude", "status", "work"]);
+    expect(status).toContain("claude status");
+    expect(status).toContain("work@example.com");
+    expect(status).toContain("usage error");
+    run(["claude", "rename", "work", "work2"]);
+    expect(run(["claude", "list"])).toContain("work2");
   });
 
   it("shows grok auth status", async () => {

@@ -7,24 +7,13 @@ import {
   requireProfile,
 } from "../core/accounts.js";
 import {
-  loginCodex,
-  readAccountLabel as readCodexLabel,
-  readRateLimits,
-  runCodex,
-} from "../core/codex.js";
-import {
   getProvider,
   isProviderId,
   resolveConfig,
   type AppConfig,
   type ProviderId,
 } from "../core/config.js";
-import {
-  loginGrok,
-  readAccountLabel as readGrokLabel,
-  readAuthStatus,
-  runGrok,
-} from "../core/grok.js";
+import { providers } from "../core/providers.js";
 import {
   getSessionId,
   getTodayLogPath,
@@ -58,6 +47,9 @@ function hintForError(message: string): string | undefined {
   if (message.includes("Is the Grok CLI installed")) {
     return "Install Grok CLI: curl -fsSL https://x.ai/cli/install.sh | bash";
   }
+  if (message.includes("Is the Claude CLI installed")) {
+    return "Install Claude Code: npm install -g @anthropic-ai/claude-code";
+  }
   if (message.includes("Is the codex CLI installed")) {
     return "Install Codex CLI and ensure it is on PATH.";
   }
@@ -85,10 +77,7 @@ async function printList(config: AppConfig, provider: ProviderId): Promise<void>
   const rows = [];
   for (const name of await listAccounts(providerConfig)) {
     try {
-      const identity =
-        provider === "codex"
-          ? await readCodexLabel(providerConfig, name)
-          : await readGrokLabel(providerConfig, name);
+      const identity = await providers[provider].readLabel(providerConfig, name);
       rows.push({ profile: name, identity });
     } catch (error) {
       logWarn("list identity failed", {
@@ -122,10 +111,7 @@ async function printStatus(
     let failed = false;
     for (const name of await listAccounts(providerConfig)) {
       try {
-        const row =
-          provider === "codex"
-            ? await readRateLimits(providerConfig, name)
-            : await readAuthStatus(providerConfig, name);
+        const row = await providers[provider].readUsage(providerConfig, name);
         rows.push(row);
         logInfo("status account ok", {
           provider,
@@ -152,10 +138,7 @@ async function printStatus(
     throw new Error(`missing account name; use sacc ${provider} status <name> or sacc ${provider} status --all`);
   }
   try {
-    const row =
-      provider === "codex"
-        ? await readRateLimits(providerConfig, target)
-        : await readAuthStatus(providerConfig, target);
+    const row = await providers[provider].readUsage(providerConfig, target);
     logInfo("status ok", {
       provider,
       account: target,
@@ -179,10 +162,7 @@ async function runProvider(
   logInfo("run provider", { provider, account, args });
   const providerConfig = getProvider(config, provider);
   await requireProfile(providerConfig, account);
-  process.exitCode =
-    provider === "codex"
-      ? await runCodex(providerConfig, account, args)
-      : await runGrok(providerConfig, account, args);
+  process.exitCode = await providers[provider].run(providerConfig, account, args);
 }
 
 async function loginProvider(
@@ -193,10 +173,7 @@ async function loginProvider(
 ): Promise<void> {
   logInfo("login provider", { provider, account: name, loginArgs });
   const providerConfig = getProvider(config, provider);
-  process.exitCode =
-    provider === "codex"
-      ? await loginCodex(providerConfig, name)
-      : await loginGrok(providerConfig, name, loginArgs);
+  process.exitCode = await providers[provider].login(providerConfig, name, loginArgs);
 }
 
 async function renameProvider(
@@ -206,6 +183,7 @@ async function renameProvider(
   newName: string,
 ): Promise<void> {
   logInfo("rename provider", { provider, from: oldName, to: newName });
+  await providers[provider].forget?.(getProvider(config, provider), oldName);
   await renameAccount(getProvider(config, provider), oldName, newName);
 }
 
@@ -224,6 +202,7 @@ async function removeProvider(
     message: `Delete ${provider} account profile "${name}"? Type ${name} to confirm`,
   });
   if (answer === name) {
+    await providers[provider].forget?.(getProvider(config, provider), name);
     await removeAccount(getProvider(config, provider), name);
     logInfo("remove confirmed", { provider, account: name });
   } else {
@@ -234,7 +213,7 @@ async function removeProvider(
 function addProviderCommands(parent: Command, config: AppConfig, provider: ProviderId): void {
   const cmd = parent
     .command(provider)
-    .description(`${provider === "codex" ? "Codex" : "Grok"} account profiles`);
+    .description(`${providers[provider].label} account profiles`);
 
   cmd
     .command("login <name>")
@@ -306,7 +285,7 @@ function createProgram(options: CreateProgramOptions = {}): Command {
 
   program
     .name("sacc")
-    .description("Multi-provider AI CLI account switcher (Codex, Grok, more coming)")
+    .description("Multi-provider AI CLI account switcher (Codex, Grok, Claude)")
     .helpOption("-h, --help", "show help")
     .showHelpAfterError(false)
     .exitOverride();
@@ -334,6 +313,7 @@ function createProgram(options: CreateProgramOptions = {}): Command {
 
   addProviderCommands(program, config, "codex");
   addProviderCommands(program, config, "grok");
+  addProviderCommands(program, config, "claude");
 
   // Backward-compatible shortcuts default to Codex.
   program.command("login <name>").action(async (name: string) => {
