@@ -1,6 +1,6 @@
 {
   "name": "switch-acc-ai",
-  "version": "0.2.12",
+  "version": "0.3.0",
   "description": "Multi-provider AI CLI account switcher — isolated profiles for Codex, Grok, and more; shared skills/sessions; official CLIs only.",
   "keywords": [
     "codex",
