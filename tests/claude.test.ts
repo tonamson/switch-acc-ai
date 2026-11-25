@@ -1,10 +1,12 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { beforeEach, describe, expect, it } from "vitest";
+import { lstat, readFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureProfile } from "../src/core/accounts.js";
 import type { ProviderConfig } from "../src/core/config.js";
-import { readAccountLabel, readAuthStatus } from "../src/core/claude.js";
+import { loginClaude, readAccountLabel, readAuthStatus, runClaude } from "../src/core/claude.js";
+import { writeFakeClaude } from "./helpers/fakeClaude.js";
 
 async function setup(): Promise<ProviderConfig> {
   const root = await mkdtemp(join(tmpdir(), "sacc-claude-"));
@@ -100,5 +102,50 @@ describe("claude usage", () => {
     expect(await readAccountLabel(config, "a")).toBe("Not signed in");
     await writeFile(join(p, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "a@x.com" } }));
     expect(await readAccountLabel(config, "a")).toBe("a@x.com");
+  });
+});
+
+describe("claude run/login", () => {
+  let config: ProviderConfig;
+  let root: string;
+  let oldPath: string | undefined;
+  beforeEach(async () => {
+    config = await setup();
+    root = join(config.sharedHome, "..");
+    await writeFakeClaude(join(root, "bin"));
+    oldPath = process.env.PATH;
+    process.env.PATH = `${join(root, "bin")}:${oldPath || ""}`;
+    process.env.CLAUDE_ACCOUNT_LOG = join(root, "account.log");
+    process.env.CLAUDE_ARGS_LOG = join(root, "args.log");
+    process.env.CLAUDE_LOGIN_LOG = join(root, "login.log");
+  });
+  afterEach(() => {
+    process.env.PATH = oldPath;
+  });
+
+  it("login sets CLAUDE_CONFIG_DIR to the profile", async () => {
+    expect(await loginClaude(config, "work")).toBe(0);
+    const profile = join(config.accountsDir, "work");
+    expect((await readFile(join(root, "login.log"), "utf8")).trim()).toBe(profile);
+    expect(await readAccountLabel(config, "work")).toBe("work@example.com");
+  });
+
+  it("run forwards args under the profile", async () => {
+    await loginClaude(config, "work");
+    expect(await runClaude(config, "work", ["--help", "x"])).toBe(0);
+    expect((await readFile(join(root, "account.log"), "utf8")).trim()).toBe(join(config.accountsDir, "work"));
+    expect((await readFile(join(root, "args.log"), "utf8")).trim()).toBe("--help x");
+  });
+
+  it("never links credentials into shared home", async () => {
+    await loginClaude(config, "work");
+    await runClaude(config, "work", []);
+    expect((await lstat(join(config.accountsDir, "work", ".credentials.json"))).isSymbolicLink()).toBe(false);
+  });
+
+  it("rejects with install hint when claude is missing", async () => {
+    await ensureProfile(config, "work");
+    process.env.PATH = "/nonexistent";
+    await expect(runClaude(config, "work", [])).rejects.toThrow("Is the Claude CLI installed");
   });
 });

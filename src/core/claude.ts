@@ -1,10 +1,11 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { requireProfile } from "./accounts.js";
+import { ensureProfile, linkSharedProfile, requireProfile, watchSharedProfileLinks } from "./accounts.js";
+import { prepareInteractiveChild } from "./grok.js";
 import type { ProviderConfig } from "./config.js";
-import { logInfo, logWarn, redactSecret, serializeError } from "./log.js";
+import { logException, logInfo, logWarn, redactSecret, serializeError } from "./log.js";
 import {
   ABSENT,
   emptyUsageStatus,
@@ -121,4 +122,49 @@ export async function readAuthStatus(
     logWarn("claude usage failed", { account: name, error: serializeError(error) });
   }
   return base;
+}
+
+function launch(config: ProviderConfig, profilePath: string, args: string[], label: string): Promise<number> {
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: profilePath };
+  logInfo(`${label} start`, { provider: "claude", profilePath, args, CLAUDE_CONFIG_DIR: profilePath });
+  const child = spawn("claude", args, { env, stdio: "inherit" });
+  return new Promise((resolve, reject) => {
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      logException(`${label} spawn error`, error, { profilePath });
+      reject(
+        error.code === "ENOENT"
+          ? new Error("failed to launch claude: command not found. Is the Claude CLI installed and on PATH?")
+          : error,
+      );
+    });
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+}
+
+// ponytail: mirrors grok.ts run/login; share helpers if a 4th provider arrives.
+async function withSharedLinks(config: ProviderConfig, profilePath: string, fn: () => Promise<number>): Promise<number> {
+  await linkSharedProfile(config, profilePath, "claude");
+  const guard = watchSharedProfileLinks(config, profilePath, "claude");
+  try {
+    return await fn();
+  } finally {
+    await guard.stop();
+  }
+}
+
+export async function runClaude(config: ProviderConfig, name: string, args: string[]): Promise<number> {
+  const profilePath = await requireProfile(config, name);
+  return withSharedLinks(config, profilePath, async () => {
+    prepareInteractiveChild(`claude run ${name}`);
+    return launch(config, profilePath, args, "run");
+  });
+}
+
+export async function loginClaude(config: ProviderConfig, name: string, args: string[] = []): Promise<number> {
+  const profilePath = await ensureProfile(config, name);
+  return withSharedLinks(config, profilePath, async () => {
+    prepareInteractiveChild(`claude login ${name}`);
+    if (process.stdout.isTTY) process.stdout.write(`Signing in Claude profile "${name}"…\n\n`);
+    return launch(config, profilePath, ["auth", "login", ...args], "login");
+  });
 }
