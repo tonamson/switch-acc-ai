@@ -31,6 +31,31 @@ export function keychainService(profilePath: string): string {
   return `Claude Code-credentials-${createHash("sha256").update(profilePath).digest("hex").slice(0, 8)}`;
 }
 
+function deleteKeychain(profilePath: string): Promise<void> {
+  if (process.platform !== "darwin") return Promise.resolve();
+  return new Promise((resolve) => {
+    execFile("security", ["delete-generic-password", "-s", keychainService(profilePath)], () => resolve());
+  });
+}
+
+/** Env vars that would make every profile run as one account regardless of CLAUDE_CONFIG_DIR. */
+const AUTH_OVERRIDES = ["CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"];
+
+export function claudeEnv(profilePath: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: profilePath };
+  for (const key of AUTH_OVERRIDES) delete env[key];
+  return env;
+}
+
+/** Call before remove/rename: Keychain items are keyed by profile path and would otherwise outlive it. */
+export async function forgetClaudeLogin(
+  config: ProviderConfig,
+  name: string,
+  del: (profilePath: string) => Promise<void> = deleteKeychain,
+): Promise<void> {
+  await del(await requireProfile(config, name));
+}
+
 function defaultReadKeychain(profilePath: string): Promise<string | null> {
   if (process.platform !== "darwin") return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -115,6 +140,9 @@ export async function readAuthStatus(
     });
     if (!response.ok) throw new Error(`usage API ${response.status}`);
     const usage = (await response.json()) as UsageBody;
+    if (typeof usage?.five_hour !== "object" && typeof usage?.seven_day !== "object") {
+      throw new Error("unexpected usage response shape");
+    }
     base.fiveHour = metricFromPercentWindow(usage.five_hour?.utilization, resetLabel(usage.five_hour?.resets_at));
     base.weekly = metricFromPercentWindow(usage.seven_day?.utilization, resetLabel(usage.seven_day?.resets_at));
   } catch (error) {
@@ -125,7 +153,7 @@ export async function readAuthStatus(
 }
 
 function launch(config: ProviderConfig, profilePath: string, args: string[], label: string): Promise<number> {
-  const env = { ...process.env, CLAUDE_CONFIG_DIR: profilePath };
+  const env = claudeEnv(profilePath);
   logInfo(`${label} start`, { provider: "claude", profilePath, args, CLAUDE_CONFIG_DIR: profilePath });
   const child = spawn("claude", args, { env, stdio: "inherit" });
   return new Promise((resolve, reject) => {
@@ -161,7 +189,10 @@ export async function runClaude(config: ProviderConfig, name: string, args: stri
 }
 
 export async function loginClaude(config: ProviderConfig, name: string, args: string[] = []): Promise<number> {
+  const isNew = await requireProfile(config, name).then(() => false, () => true);
   const profilePath = await ensureProfile(config, name);
+  // A new profile must not inherit a stale Keychain item from a removed/renamed profile of the same name.
+  if (isNew) await deleteKeychain(profilePath);
   return withSharedLinks(config, profilePath, async () => {
     prepareInteractiveChild(`claude login ${name}`);
     if (process.stdout.isTTY) process.stdout.write(`Signing in Claude profile "${name}"…\n\n`);

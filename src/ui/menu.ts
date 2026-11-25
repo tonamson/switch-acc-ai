@@ -157,6 +157,7 @@ export async function openMainMenu(
         to: action.newName,
         providerConfig: getProvider(config, action.provider),
       });
+      await providers[action.provider].forget?.(getProvider(config, action.provider), action.account);
       await renameAccount(getProvider(config, action.provider), action.account, action.newName);
       continue;
     }
@@ -167,6 +168,7 @@ export async function openMainMenu(
         account: action.account,
         providerConfig: getProvider(config, action.provider),
       });
+      await providers[action.provider].forget?.(getProvider(config, action.provider), action.account);
       await removeAccount(getProvider(config, action.provider), action.account);
       continue;
     }

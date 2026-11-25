@@ -1,4 +1,4 @@
-import { loginClaude, readAccountLabel as claudeLabel, readAuthStatus as claudeUsage, runClaude } from "./claude.js";
+import { forgetClaudeLogin, loginClaude, readAccountLabel as claudeLabel, readAuthStatus as claudeUsage, runClaude } from "./claude.js";
 import { loginCodex, readAccountLabel as codexLabel, readRateLimits, runCodex } from "./codex.js";
 import type { ProviderConfig, ProviderId } from "./config.js";
 import { loginGrok, readAccountLabel as grokLabel, readAuthStatus as grokUsage, runGrok } from "./grok.js";
@@ -10,6 +10,8 @@ export type ProviderApi = {
   login(config: ProviderConfig, name: string, args?: string[]): Promise<number>;
   readLabel(config: ProviderConfig, name: string): Promise<string>;
   readUsage(config: ProviderConfig, name: string): Promise<UsageStatus>;
+  /** Drop out-of-profile credentials (e.g. Keychain) before the profile is removed or renamed. */
+  forget?(config: ProviderConfig, name: string): Promise<void>;
 };
 
 export const providers: Record<ProviderId, ProviderApi> = {
@@ -33,5 +35,6 @@ export const providers: Record<ProviderId, ProviderApi> = {
     login: loginClaude,
     readLabel: claudeLabel,
     readUsage: (c, n) => claudeUsage(c, n),
+    forget: forgetClaudeLogin,
   },
 };

@@ -188,7 +188,7 @@ Flow:
            └─ sessions/, skills/, …  ──symlink──►  ~/.codex/
 ```
 
-Same pattern for every future provider (e.g. Claude → isolated profile home + shared skills/sessions + official `claude`).
+Same pattern for every provider: isolated profile home + shared skills/sessions + the official CLI. For Claude, auth lives in the macOS Keychain keyed by profile path, so `rename`/`remove` also delete that Keychain item (re-login after a rename). `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` are stripped from the child env so every profile keeps its own login.
 
 Override paths if needed:
 

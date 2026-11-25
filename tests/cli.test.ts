@@ -144,6 +144,8 @@ describe("sacc cli", () => {
     expect(status).toContain("claude status");
     expect(status).toContain("work@example.com");
     expect(status).toContain("usage error");
+    run(["claude", "rename", "work", "work2"]);
+    expect(run(["claude", "list"])).toContain("work2");
   });
 
   it("shows grok auth status", async () => {

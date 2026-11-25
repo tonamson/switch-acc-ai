@@ -183,6 +183,7 @@ async function renameProvider(
   newName: string,
 ): Promise<void> {
   logInfo("rename provider", { provider, from: oldName, to: newName });
+  await providers[provider].forget?.(getProvider(config, provider), oldName);
   await renameAccount(getProvider(config, provider), oldName, newName);
 }
 
@@ -201,6 +202,7 @@ async function removeProvider(
     message: `Delete ${provider} account profile "${name}"? Type ${name} to confirm`,
   });
   if (answer === name) {
+    await providers[provider].forget?.(getProvider(config, provider), name);
     await removeAccount(getProvider(config, provider), name);
     logInfo("remove confirmed", { provider, account: name });
   } else {

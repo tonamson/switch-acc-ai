@@ -5,7 +5,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureProfile } from "../src/core/accounts.js";
 import type { ProviderConfig } from "../src/core/config.js";
-import { loginClaude, readAccountLabel, readAuthStatus, runClaude } from "../src/core/claude.js";
+import { claudeEnv, forgetClaudeLogin, keychainService, loginClaude, readAccountLabel, readAuthStatus, runClaude } from "../src/core/claude.js";
 import { writeFakeClaude } from "./helpers/fakeClaude.js";
 
 async function setup(): Promise<ProviderConfig> {
@@ -147,5 +147,41 @@ describe("claude run/login", () => {
     await ensureProfile(config, "work");
     process.env.PATH = "/nonexistent";
     await expect(runClaude(config, "work", [])).rejects.toThrow("Is the Claude CLI installed");
+  });
+});
+
+describe("claude isolation hardening", () => {
+  it("strips env vars that override per-profile auth", () => {
+    process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "";
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "t";
+    process.env.ANTHROPIC_AUTH_TOKEN = "t";
+    const env = claudeEnv("/p/a");
+    for (const k of ["CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) delete process.env[k];
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/p/a");
+    expect("CLAUDE_SECURESTORAGE_CONFIG_DIR" in env).toBe(false);
+    expect("CLAUDE_CODE_OAUTH_TOKEN" in env).toBe(false);
+    expect("ANTHROPIC_AUTH_TOKEN" in env).toBe(false);
+  });
+
+  it("keychain service is per profile and never the bare entry", () => {
+    const a = keychainService("/p/a");
+    expect(a).toMatch(/^Claude Code-credentials-[0-9a-f]{8}$/);
+    expect(a).not.toBe(keychainService("/p/b"));
+  });
+
+  it("forget deletes the profile's keychain item", async () => {
+    const config = await setup();
+    const p = await ensureProfile(config, "a");
+    const seen: string[] = [];
+    await forgetClaudeLogin(config, "a", async (path) => void seen.push(path));
+    expect(seen).toEqual([p]);
+  });
+
+  it("notes an unexpected 200 body shape", async () => {
+    const config = await setup();
+    const p = await ensureProfile(config, "a");
+    await creds(p, "tok");
+    const s = await readAuthStatus(config, "a", { fetchImpl: fakeFetch([], 200, { fiveHour: {} }), readKeychain: async () => null });
+    expect(s.note).toMatch(/^usage error:/);
   });
 });
