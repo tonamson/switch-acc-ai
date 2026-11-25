@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/core/config.js";
+import { SHARED_ASSETS, isProviderId, resolveConfig } from "../src/core/config.js";
 
 describe("resolveConfig", () => {
   it("uses account and shared home fallback paths", () => {
@@ -26,5 +26,21 @@ describe("resolveConfig", () => {
     expect(config.codex.sharedHome).toBe("/tmp/shared-codex");
     expect(config.grok.accountsDir).toBe("/tmp/grok-accounts");
     expect(config.grok.sharedHome).toBe("/tmp/shared-grok");
+  });
+
+  it("resolves claude paths, overrides, and shared assets", () => {
+    const d = resolveConfig({}, "/h");
+    expect(d.claude).toEqual({ accountsDir: "/h/.claude-accounts", sharedHome: "/h/.claude" });
+    const o = resolveConfig(
+      { CLAUDE_ACCOUNTS_DIR: "/a", CLAUDE_SHARED_HOME: "/s" },
+      "/h",
+    );
+    expect(o.claude).toEqual({ accountsDir: "/a", sharedHome: "/s" });
+    expect(isProviderId("claude")).toBe(true);
+    for (const a of ["skills", "agents", "commands", "plugins", "projects", "settings.json", "CLAUDE.md", "rules"]) {
+      expect(SHARED_ASSETS.claude).toContain(a);
+    }
+    expect(SHARED_ASSETS.claude).not.toContain(".credentials.json");
+    expect(SHARED_ASSETS.claude).not.toContain(".claude.json");
   });
 });

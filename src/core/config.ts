@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type ProviderId = "codex" | "grok";
+export type ProviderId = "codex" | "grok" | "claude";
 
 export type ProviderConfig = {
   accountsDir: string;
@@ -11,6 +11,7 @@ export type ProviderConfig = {
 export type AppConfig = {
   codex: ProviderConfig;
   grok: ProviderConfig;
+  claude: ProviderConfig;
 };
 
 /**
@@ -40,6 +41,17 @@ export const SHARED_ASSETS: Record<ProviderId, readonly string[]> = {
     "RTK.md",
     "trusted_folders.toml",
   ],
+  // Auth (.credentials.json, .claude.json) stays private per profile.
+  claude: [
+    "skills",
+    "agents",
+    "commands",
+    "plugins",
+    "projects",
+    "settings.json",
+    "CLAUDE.md",
+    "rules",
+  ],
 };
 
 /** Directory shared assets — create empty on shared home when missing so installs land in global. */
@@ -51,10 +63,12 @@ export const SHARED_DIR_ASSETS: ReadonlySet<string> = new Set([
   "rules",
   "installed-plugins",
   "marketplace-cache",
+  "commands",
+  "projects",
 ]);
 
 export function isProviderId(value: string): value is ProviderId {
-  return value === "codex" || value === "grok";
+  return value === "codex" || value === "grok" || value === "claude";
 }
 
 export function getProvider(config: AppConfig, id: ProviderId): ProviderConfig {
@@ -73,6 +87,10 @@ export function resolveConfig(
     grok: {
       accountsDir: env.GROK_ACCOUNTS_DIR || join(homeDir, ".grok-accounts"),
       sharedHome: env.GROK_SHARED_HOME || join(homeDir, ".grok"),
+    },
+    claude: {
+      accountsDir: env.CLAUDE_ACCOUNTS_DIR || join(homeDir, ".claude-accounts"),
+      sharedHome: env.CLAUDE_SHARED_HOME || join(homeDir, ".claude"),
     },
   };
 }
